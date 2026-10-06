@@ -114,7 +114,7 @@ class Contract(gl.Contract):
     def _get_current_block(self) -> u256:
         return u256(int(self.vault_counter))
 
-    # ── Reputation Management Internal Helpers ─────────────────────────
+    # -- Reputation Management Internal Helpers -------------------------
 
     def _touch_participant(self, addr_str: str) -> None:
         if addr_str == ZERO_ADDRESS or len(addr_str) < 10:
@@ -151,7 +151,7 @@ class Contract(gl.Contract):
         tier = self._get_reputation_tier(mfg_str)
         return tier in [TIER_GOLD, TIER_PLATINUM]
 
-    # ── Public Write Methods ──────────────────────────────────────────
+    # -- Public Write Methods ------------------------------------------
 
     @gl.public.write.payable
     def register_warranty_vault(
@@ -727,7 +727,7 @@ Respond ONLY with valid JSON:
         self._add_reputation(mfg_str, 20)
         self.stats_clean_warranties[mfg_str] = self.stats_clean_warranties.get(mfg_str, u32(0)) + u32(1)
 
-    # ── Read-only Views ───────────────────────────────────────────────
+    # -- Read-only Views -----------------------------------------------
 
     @gl.public.view
     def get_vault(self, vault_id: u64) -> str:
