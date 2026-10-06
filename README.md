@@ -4,7 +4,7 @@
 > **Target Network:** GenLayer StudioNet (Chain ID: `61999` / Hex: `0xF22F`, RPC: `https://studio.genlayer.com/api`)  
 > **Deployed Intelligent Contract (v3.0):** [`0x7bb4e10087C5b80748fA46364C8b209738cC13d5`](https://studio.genlayer.com)  
 > **GitHub Repository:** [https://github.com/luongnhan9999/AgentRecall](https://github.com/luongnhan9999/AgentRecall)  
-> **Live Production dApp:** [https://frontend-j7qa174zj-tynamy.vercel.app](https://frontend-j7qa174zj-tynamy.vercel.app) (Mirror: [https://frontend-three-drab-v46xpao16q.vercel.app](https://frontend-three-drab-v46xpao16q.vercel.app))
+> **Live Production dApp:** [https://agentrecall-one.vercel.app](https://agentrecall-one.vercel.app) (Mirror: [https://agentrecall-lzdwo1yrj-tynamy.vercel.app](https://agentrecall-lzdwo1yrj-tynamy.vercel.app))
 
 ---
 
