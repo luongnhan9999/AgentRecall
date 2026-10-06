@@ -19,6 +19,7 @@ import { RegisterVaultModal } from './components/RegisterVaultModal';
 import { FileClaimModal } from './components/FileClaimModal';
 import { AppealModal } from './components/AppealModal';
 import { DiagnosticInspectorModal } from './components/DiagnosticInspectorModal';
+import { CockpitConsole } from './components/CockpitConsole';
 import { SyndicateModal } from './components/SyndicateModal';
 import { LeaderboardDrawer } from './components/LeaderboardDrawer';
 import { 
@@ -365,8 +366,19 @@ export function App() {
           criticalRecallCount={criticalRecallCount}
         />
 
+        {/* Live Cockpit Telemetry & CAN-Bus Console HUD */}
+        {vaults.length > 0 && (
+          <CockpitConsole
+            vaults={vaults}
+            onSelectVault={handleOpenInspector}
+            onAdjudicateClaim={handleAdjudicateClaim}
+            onOpenFileClaim={(v) => setClaimVault(v)}
+            isProcessing={isProcessing}
+          />
+        )}
+
         {/* Filter and Search Bar */}
-        <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 mb-6 bg-[#151C2C]/50 p-3 rounded-2xl border border-slate-800">
+        <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 mb-6 bg-[#0A0E1A]/80 p-3 rounded-2xl border border-slate-800/80 shadow-md">
           {/* Status Tabs */}
           <div className="flex items-center space-x-1 overflow-x-auto pb-1 sm:pb-0">
             {['ALL', 'ACTIVE', 'CLAIMED', 'COOLING', 'REFUNDED', 'DISPUTED'].map((st) => (
@@ -375,7 +387,7 @@ export function App() {
                 onClick={() => setFilterStatus(st)}
                 className={`px-3 py-1.5 rounded-xl text-xs font-mono transition whitespace-nowrap ${
                   filterStatus === st
-                    ? 'bg-orange-500/10 text-orange-400 border border-orange-500/30 font-bold'
+                    ? 'bg-orange-500/15 text-orange-400 border border-orange-500/40 font-bold shadow-sm'
                     : 'text-slate-400 hover:text-white'
                 }`}
               >
@@ -392,19 +404,19 @@ export function App() {
               placeholder="Search VIN, Firmware, Address..."
               value={searchQuery}
               onChange={(e) => setSearchQuery(e.target.value)}
-              className="w-full pl-9 pr-3.5 py-1.5 bg-slate-900 border border-slate-800 rounded-xl text-xs font-mono text-white placeholder-slate-500 focus:outline-none focus:border-orange-500 transition"
+              className="w-full pl-9 pr-3.5 py-1.5 bg-[#070A14] border border-slate-800 rounded-xl text-xs font-mono text-white placeholder-slate-500 focus:outline-none focus:border-orange-500 transition"
             />
           </div>
         </div>
 
         {/* Vaults Grid */}
         {isLoading && vaults.length === 0 ? (
-          <div className="p-16 text-center space-y-3 bg-[#151C2C]/30 border border-slate-800/80 rounded-2xl">
+          <div className="p-16 text-center space-y-3 bg-[#0A0E1A]/50 border border-slate-800/80 rounded-3xl">
             <RefreshCw className="w-8 h-8 mx-auto animate-spin text-orange-400" />
             <p className="text-sm font-mono text-slate-400">Loading live warranty vaults from GenLayer StudioNet...</p>
           </div>
         ) : filteredVaults.length === 0 ? (
-          <div className="p-16 text-center space-y-3 bg-[#151C2C]/30 border border-slate-800/80 rounded-2xl">
+          <div className="p-16 text-center space-y-3 bg-[#0A0E1A]/50 border border-slate-800/80 rounded-3xl">
             <Car className="w-8 h-8 mx-auto text-slate-600" />
             <p className="text-sm font-mono text-slate-400">No warranty vaults matching filter.</p>
             <button
@@ -436,7 +448,7 @@ export function App() {
       </main>
 
       {/* Footer */}
-      <footer className="border-t border-slate-800 bg-[#0B0F19] py-6 text-center text-xs font-mono text-slate-500">
+      <footer className="border-t border-slate-800/80 bg-[#060911] py-6 text-center text-xs font-mono text-slate-500">
         AgentRecall Lemon Law Escrow Protocol • GenLayer StudioNet (Chain ID 61999 / Hex 0xF22F)
       </footer>
 
