@@ -4,12 +4,6 @@ from dataclasses import dataclass
 import json
 import hashlib
 
-# Canonical GenVM transaction rollback error support
-if hasattr(gl, "vm") and hasattr(gl.vm, "UserError"):
-    gl.UserError = gl.vm.UserError
-elif not hasattr(gl, "UserError"):
-    gl.UserError = ValueError
-
 CANARY_TOKEN = "CANARY_AGENT_RECALL_LEMON_V1"
 ZERO_ADDRESS = "0x0000000000000000000000000000000000000000"
 
@@ -23,7 +17,7 @@ STATUS_SETTLED_REJECTED = u8(5)    # User error or normal operation, 100% return
 STATUS_DISPUTED = u8(6)            # Under appellate dispute review with staked bond
 STATUS_EXPIRED_RECLAIMED = u8(7)   # Warranty period concluded without breach, reclaimed by OEM
 
-# Reputation Trust Tiers (Milestone v3)
+# Reputation Trust Tiers
 TIER_BRONZE = "BRONZE_OEM"                  # < 20 pts (Standard 24-block cooling-off)
 TIER_SILVER = "SILVER_OEM"                  # 20 - 49 pts (Standard 24-block cooling-off)
 TIER_GOLD = "GOLD_VERIFIED_OEM"             # 50 - 99 pts (Fast-Track 12-block cooling-off)
@@ -87,7 +81,6 @@ class WarrantyVault:
 class Contract(gl.Contract):
     """
     AgentRecall: Autonomous IoT & EV Firmware Lemon Law Escrow
-    Milestone v3: Syndicate Co-Guarantor Escrow, OEM Reliability Scoring & Fast-Track Adjudication
     Target Network: GenLayer studionet (Chain ID: 61999)
     """
     vaults: TreeMap[u64, WarrantyVault]
@@ -97,7 +90,7 @@ class Contract(gl.Contract):
     vault_counter: u64
     owner: Address
 
-    # Milestone v3: On-Chain OEM Reliability & Trust Tier Engine
+    # On-Chain OEM Reliability Engine
     reputation_scores: TreeMap[str, bigint]
     stats_clean_warranties: TreeMap[str, u32]
     stats_claims_resolved: TreeMap[str, u32]
@@ -105,7 +98,7 @@ class Contract(gl.Contract):
     stats_appeals_lost: TreeMap[str, u32]
     registered_registry: TreeMap[str, str]
 
-    # Milestone v3: Syndicate Co-Guarantor Pledges (Vault ID -> Serialized JSON array of contributions)
+    # Syndicate Co-Guarantor Pledges
     syndicate_pledges_json: TreeMap[u64, str]
 
     def __init__(self):
@@ -168,9 +161,6 @@ class Contract(gl.Contract):
         firmware_version: str,
         warranty_blocks: int
     ) -> u64:
-        """
-        Manufacturer locks Lemon Law warranty escrow covering a specific device/VIN.
-        """
         self._ensure_owner()
         escrow = bigint(gl.message.value)
         if escrow <= bigint(0):
@@ -242,9 +232,6 @@ class Contract(gl.Contract):
 
     @gl.public.write.payable
     def pledge_warranty_escrow(self, vault_id: u64) -> None:
-        """
-        Milestone v3: Syndicate co-guarantor (battery supplier, component vendor) contributes to warranty escrow.
-        """
         self._ensure_owner()
         if vault_id not in self.vaults:
             raise gl.UserError(f"Warranty vault {int(vault_id)} does not exist.")
@@ -261,7 +248,6 @@ class Contract(gl.Contract):
 
         self._touch_participant(funder_str)
 
-        # Deserialize and update pledges
         raw_json = self.syndicate_pledges_json.get(vault_id, "[]")
         try:
             pledges = json.loads(raw_json)
@@ -293,9 +279,6 @@ class Contract(gl.Contract):
         vault_id: u64,
         diagnostic_log_url: str
     ) -> None:
-        """
-        Consumer files a claim submitting raw CAN-bus / OBD-II / crash dump telemetry.
-        """
         self._ensure_owner()
         if vault_id not in self.vaults:
             raise gl.UserError(f"Warranty vault {int(vault_id)} does not exist.")
@@ -323,9 +306,6 @@ class Contract(gl.Contract):
 
     @gl.public.write
     def adjudicate_lemon_claim(self, vault_id: u64) -> None:
-        """
-        On-chain AI diagnostic court reviews DTC codes, battery SOH, and firmware crash logs.
-        """
         self._ensure_owner()
         if vault_id not in self.vaults:
             raise gl.UserError(f"Warranty vault {int(vault_id)} does not exist.")
@@ -472,10 +452,6 @@ Respond ONLY with valid JSON without markdown fences:
 
     @gl.public.write.payable
     def appeal_verdict(self, vault_id: u64, dispute_reason: str) -> None:
-        """
-        Allows consumer or manufacturer to appeal within cooling-off window with a 10% staked dispute bond.
-        Window is 12 blocks for fast-track or 24 blocks for standard.
-        """
         self._ensure_owner()
         if vault_id not in self.vaults:
             raise gl.UserError(f"Warranty vault {int(vault_id)} does not exist.")
@@ -515,9 +491,6 @@ Respond ONLY with valid JSON without markdown fences:
 
     @gl.public.write
     def adjudicate_appeal(self, vault_id: u64, supplemental_log_url: str) -> None:
-        """
-        Supreme Appellate Diagnostic Board reviews supplemental independent laboratory logs.
-        """
         self._ensure_owner()
         if vault_id not in self.vaults:
             raise gl.UserError(f"Warranty vault {int(vault_id)} does not exist.")
@@ -606,6 +579,7 @@ Respond ONLY with valid JSON:
         bond_val = v.dispute_bond
         total_settling = escrow_val + bond_val
         v.dispute_bond = bigint(0)
+        v.escrow_amount = bigint(0)  # Lock escrow against double payout
 
         self.total_warranty_locked = self.total_warranty_locked - total_settling
         self.total_claims_settled = self.total_claims_settled + u32(1)
@@ -618,7 +592,6 @@ Respond ONLY with valid JSON:
             v.reason = f"[APPEAL UPHELD] {app_reason}"
             _pay_native(v.consumer, escrow_val)
             _pay_native(appellant, bond_val)
-            # Reputation accounting
             self._add_reputation(appellant_str, 15)
             self._add_reputation(mfg_str, -10)
             self.stats_appeals_won[appellant_str] = self.stats_appeals_won.get(appellant_str, u32(0)) + u32(1)
@@ -640,15 +613,11 @@ Respond ONLY with valid JSON:
             v.reason = f"[APPEAL DISMISSED] {app_reason}"
             self._refund_guarantors_proportional(vault_id, escrow_val, escrow_val)
             _pay_native(counterparty, bond_val)
-            # Appellant lost bond
             self._add_reputation(appellant_str, -5)
             self.stats_appeals_lost[appellant_str] = self.stats_appeals_lost.get(appellant_str, u32(0)) + u32(1)
 
     @gl.public.write
     def finalize_settlement(self, vault_id: u64) -> None:
-        """
-        Executes un-disputed settlement strictly after the cooling-off window (12 or 24 blocks).
-        """
         self._ensure_owner()
         if vault_id not in self.vaults:
             raise gl.UserError(f"Warranty vault {int(vault_id)} does not exist.")
@@ -674,6 +643,7 @@ Respond ONLY with valid JSON:
             raise gl.UserError(f"Cooling-off challenge window ({window_blocks} blocks) is still active.")
 
         escrow_val = v.escrow_amount
+        v.escrow_amount = bigint(0)  # Lock escrow against double payout
         self.total_warranty_locked = self.total_warranty_locked - escrow_val
         self.total_claims_settled = self.total_claims_settled + u32(1)
         mfg_str = _addr_str(v.manufacturer)
@@ -681,7 +651,6 @@ Respond ONLY with valid JSON:
         if v.verdict == "LEMON_FULL_REFUND":
             v.status = STATUS_SETTLED_FULL_REFUND
             _pay_native(v.consumer, escrow_val)
-            # Reputation hit on systemic lemon defect
             self._add_reputation(mfg_str, -10)
             self.stats_claims_resolved[mfg_str] = self.stats_claims_resolved.get(mfg_str, u32(0)) + u32(1)
 
@@ -711,8 +680,7 @@ Respond ONLY with valid JSON:
         except Exception:
             pledges = []
 
-        if not pledges:
-            # Fallback to single manufacturer
+        if not pledges or original_total <= bigint(0):
             _pay_native(self.vaults[vault_id].manufacturer, amount_to_distribute)
             return
 
@@ -729,7 +697,6 @@ Respond ONLY with valid JSON:
 
     @gl.public.write
     def cancel_or_reclaim(self, vault_id: u64) -> None:
-        """Manufacturer reclaims warranty escrow once coverage duration expires with zero claims."""
         self._ensure_owner()
         if vault_id not in self.vaults:
             raise gl.UserError(f"Warranty vault {int(vault_id)} does not exist.")
@@ -741,17 +708,18 @@ Respond ONLY with valid JSON:
         self.vault_counter = self.vault_counter + u64(1)
         current_block = self._get_current_block()
 
-        if v.status == STATUS_WARRANTY_ACTIVE:
-            if current_block < v.expires_at_block:
-                raise gl.UserError("Cannot reclaim: Warranty coverage duration is still active.")
-        else:
+        if v.status != STATUS_WARRANTY_ACTIVE:
             raise gl.UserError("Cannot reclaim: Vault has active claims, under review, or already settled.")
+
+        if current_block < v.expires_at_block:
+            raise gl.UserError("Cannot reclaim: Warranty coverage duration is still active.")
 
         v.status = STATUS_EXPIRED_RECLAIMED
         v.verdict = "EXPIRED_CLEAN"
         v.reason = "Warranty coverage concluded with zero unresolved defects. Escrow reclaimed by OEM."
 
         escrow_val = v.escrow_amount
+        v.escrow_amount = bigint(0)
         self.total_warranty_locked = self.total_warranty_locked - escrow_val
         self._refund_guarantors_proportional(vault_id, escrow_val, escrow_val)
 
@@ -827,7 +795,6 @@ Respond ONLY with valid JSON:
 
     @gl.public.view
     def get_vault_pledges(self, vault_id: u64) -> str:
-        """Returns JSON array of syndicate co-guarantor pledges."""
         return self.syndicate_pledges_json.get(vault_id, "[]")
 
     @gl.public.view

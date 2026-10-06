@@ -7,7 +7,7 @@ export const STUDIONET_RPC_URL = "https://studio.genlayer.com/api";
 export const STUDIONET_EXPLORER_URL = "https://studio.genlayer.com";
 
 // Deployed intelligent contract on GenLayer StudioNet
-export const DEFAULT_CONTRACT_ADDRESS = "0x7bb4e10087C5b80748fA46364C8b209738cC13d5";
+export const DEFAULT_CONTRACT_ADDRESS = "0x3199Fe6BC1Aeb7e615337a9fA12354ECAA378c2b";
 
 export const genlayerClient = createClient({
   chain: chains.studionet,
