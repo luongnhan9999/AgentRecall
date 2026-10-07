@@ -2,7 +2,7 @@
 
 > **Track:** Consumer Protection / DePIN / Automotive IoT / Hardware SLA  
 > **Target Network:** GenLayer StudioNet (Chain ID: `61999` / Hex: `0xF22F`, RPC: `https://studio.genlayer.com/api`)  
-> **Deployed Intelligent Contract (v3.0):** [`0x7d5dC14eC572F806fE8Ce98a4B9Ae0b644448F81`](https://studio.genlayer.com/address/0x7d5dC14eC572F806fE8Ce98a4B9Ae0b644448F81)  
+> **Deployed Intelligent Contract (v3.0):** [`0x94c6318168e73eB4049Bf46d0DD37c8aC73e8D7d`](https://studio.genlayer.com/address/0x94c6318168e73eB4049Bf46d0DD37c8aC73e8D7d)  
 > **GitHub Repository:** [https://github.com/luongnhan9999/AgentRecall](https://github.com/luongnhan9999/AgentRecall)  
 > **Live Production dApp:** [https://agentrecall-one.vercel.app](https://agentrecall-one.vercel.app) (Mirror: [https://agentrecall-lzdwo1yrj-tynamy.vercel.app](https://agentrecall-lzdwo1yrj-tynamy.vercel.app))
 
