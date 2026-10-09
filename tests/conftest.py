@@ -175,7 +175,8 @@ class _MockSimContract:
         v["severity_score"] = severity_score
         v["reason"] = reason
         v["status"] = 2  # STATUS_AWAITING_PAYOUT
-        v["audit_completed_block"] = "10"
+        v["audit_completed_time"] = getattr(self.client.provider, "current_time", 1759000000)
+        v["audit_completed_block"] = str(v["audit_completed_time"])
         return _MockTxResult(None)
 
     def appeal_verdict(self, args, value=0):
@@ -231,6 +232,12 @@ class _MockSimContract:
     def finalize_settlement(self, args):
         vid = args[0]
         v = self.vaults[vid]
+        current_time = getattr(self.client.provider, "current_time", 1759000000)
+        adjudicated_time = v.get("audit_completed_time", current_time)
+        window_seconds = 36 if v.get("is_fast_track") else 72
+        window_blocks = 12 if v.get("is_fast_track") else 24
+        if current_time <= (adjudicated_time + window_seconds):
+            raise Exception(f"Cooling-off challenge window ({window_blocks} blocks / {window_seconds}s) is still active.")
         escrow_val = int(v["escrow_amount"])
         self.total_warranty_locked -= escrow_val
         self.total_claims_settled += 1
@@ -311,6 +318,7 @@ class _MockProvider:
     def __init__(self):
         self.llm_mocks = {}
         self.web_mocks = {}
+        self.current_time = 1759000000
 
     def make_request(self, method, params):
         if method == "sim_installMocks":
@@ -318,6 +326,12 @@ class _MockProvider:
                 self.llm_mocks.update(params["llm_mocks"])
             if "web_mocks" in params:
                 self.web_mocks.update(params["web_mocks"])
+        elif method == "sim_increaseTime":
+            delta = params[0] if isinstance(params, list) else params.get("seconds", 0)
+            self.current_time += delta
+        elif method == "sim_setTime":
+            t = params[0] if isinstance(params, list) else params.get("timestamp", 0)
+            self.current_time = t
         return True
 
 

@@ -11,8 +11,15 @@ except Exception:
     class UserError(Exception):
         pass
 
+class ContractError(UserError):
+    """Domain-specific error for AgentRecall protocol."""
+    pass
+
 if not hasattr(gl, "UserError"):
-    gl.UserError = UserError
+    try:
+        gl.UserError = UserError
+    except Exception:
+        pass
 
 CANARY_TOKEN = "CANARY_AGENT_RECALL_LEMON_V1"
 ZERO_ADDRESS = "0x0000000000000000000000000000000000000000"
@@ -141,9 +148,14 @@ class Contract(gl.Contract):
         except Exception:
             pass
         try:
+            if hasattr(gl, "message") and hasattr(gl.message, "timestamp"):
+                return u256(int(str(gl.message.timestamp)))
+        except Exception:
+            pass
+        try:
             return u256(int(datetime.now().timestamp()))
         except Exception:
-            return u256(0)
+            return u256(1759000000)
 
     def _get_current_block(self) -> u256:
         """Translates current timestamp to equivalent GenLayer block height."""
