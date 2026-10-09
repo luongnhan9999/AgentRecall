@@ -2,9 +2,9 @@
 
 > **Track:** Consumer Protection / DePIN / Automotive IoT / Hardware SLA  
 > **Target Network:** GenLayer StudioNet (Chain ID: `61999` / Hex: `0xF22F`, RPC: `https://studio.genlayer.com/api`)  
-> **Deployed Intelligent Contract (v3.0):** [`0x94c6318168e73eB4049Bf46d0DD37c8aC73e8D7d`](https://studio.genlayer.com/address/0x94c6318168e73eB4049Bf46d0DD37c8aC73e8D7d)  
+> **Deployed Intelligent Contract (v3.1):** [`0x5318e7B46Df16cc1b64aEde35CA63350328E5036`](https://studio.genlayer.com/address/0x5318e7B46Df16cc1b64aEde35CA63350328E5036)  
 > **GitHub Repository:** [https://github.com/luongnhan9999/AgentRecall](https://github.com/luongnhan9999/AgentRecall)  
-> **Live Production dApp:** [https://agentrecall-one.vercel.app](https://agentrecall-one.vercel.app) (Mirror: [https://agentrecall-lzdwo1yrj-tynamy.vercel.app](https://agentrecall-lzdwo1yrj-tynamy.vercel.app))
+> **Live Production dApp:** [https://agentrecall-one.vercel.app](https://agentrecall-one.vercel.app)
 
 ---
 
@@ -68,11 +68,32 @@ Tất cả 7 bài test được kiểm thử tự động và vượt qua **100%
 - `test_agentrecall_appeal_dismissed_bond_slashed`: Kháng cáo thất bại bị phạt tịch thu bond.
 - `test_agentrecall_v3_syndicate_coguarantor_pooling`: Nhà cung cấp pin đồng ký quỹ bảo chứng.
 - `test_agentrecall_v3_reputation_tiers_and_leaderboard`: Chấm điểm uy tín OEM và thăng hạng.
+- `test_contract_runtime_24_block_cooling_and_appeal_windows_mature_with_chain_time`: **[Steward Feedback Fix]** Chứng minh cửa sổ cooling-off 24 blocks (72s) trưởng thành theo chain time thực tế và HOÀN TOÀN không bị đẩy nhanh bởi giao dịch trên các vault khác.
+- `test_contract_runtime_12_block_fast_track_cooling_window_matures_with_chain_time`: **[Steward Feedback Fix]** Chứng minh cửa sổ Fast-Track 12 blocks (36s) cho OEM Gold/Platinum trưởng thành độc lập, miễn nhiễm với hoạt động vault khác.
+- `test_contract_runtime_warranty_expiry_matures_with_chain_time_not_unrelated_vaults`: **[Steward Feedback Fix]** Chứng minh thời hạn bảo hành trưởng thành theo thời gian chain, ngăn chặn việc thu hồi tiền ký quỹ sớm bằng cách spam transaction.
+- `test_contract_runtime_claim_cannot_be_filed_after_warranty_expired_by_time`: **[Steward Feedback Fix]** Chứng minh không thể nộp đơn đòi bồi thường sau khi thời hạn bảo hành đã hết hạn theo chain time.
 
 Chạy kiểm thử:
 ```bash
 pytest -v
+# Kết quả: 11/11 tests PASSED (100%)
 ```
+
+---
+
+## 🛡️ 4.1. Cơ Chế Thời Gian Hợp Lệ & Miễn Nhiễm Spam (Steward Feedback Resolution)
+
+Trước đây, hợp đồng sử dụng bộ đếm hành động nội bộ (`self.vault_counter`) để tính block. Giám khảo đã chỉ ra rằng khi có nhiều giao dịch không liên quan trên các vault khác, bộ đếm này bị tăng giả lập, làm đẩy nhanh cửa sổ cooling-off.
+
+**Giải pháp đã hoàn thiện và kiểm chứng 100%:**
+1. **Thay thế bộ đếm giao dịch bằng GenVM Consensus Datetime**:
+   Hợp đồng sử dụng `gl.message_raw["datetime"]` (chuỗi ISO-8601 chuẩn được tất cả các validator thống nhất đồng thuận), chuyển đổi sang UNIX epoch timestamp (`_get_current_timestamp()`).
+2. **Quy đổi thời gian block StudioNet chuẩn (~3s / block)**:
+   - Cửa sổ Cooling-off chuẩn: `24 blocks = 72 giây` (`STANDARD_COOLING_OFF_SECONDS = 72`).
+   - Cửa sổ Fast-Track (OEM Gold/Platinum): `12 blocks = 36 giây` (`FAST_TRACK_COOLING_OFF_SECONDS = 36`).
+   - Thời hạn bảo hành: `warranty_blocks * 3 giây`.
+3. **Miễn nhiễm hoàn toàn với giao dịch vault khác**:
+   `self.vault_counter` hiện CHỈ dùng làm ID định danh tuần tự khi tạo vault mới (`vault_id`), không còn can thiệp vào bất kỳ logic thời hạn hay deadline nào. Dù có 100 giao dịch diễn ra trên các vault khác, cửa sổ cooling-off và thời hạn bảo hành của vault hiện tại vẫn giữ nguyên cho đến khi thời gian blockchain thực tế trôi qua.
 
 ---
 

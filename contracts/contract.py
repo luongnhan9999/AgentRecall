@@ -1,8 +1,18 @@
 # { "Depends": "py-genlayer:1jb45aa8ynh2a9c9xn3b7qqh8sm5q93hwfp7jqmwsfhh8jpz09h6" }
 from genlayer import *
 from dataclasses import dataclass
+from datetime import datetime
 import json
 import hashlib
+
+try:
+    UserError = gl.vm.UserError
+except Exception:
+    class UserError(Exception):
+        pass
+
+if not hasattr(gl, "UserError"):
+    gl.UserError = UserError
 
 CANARY_TOKEN = "CANARY_AGENT_RECALL_LEMON_V1"
 ZERO_ADDRESS = "0x0000000000000000000000000000000000000000"
@@ -23,8 +33,15 @@ TIER_SILVER = "SILVER_OEM"                  # 20 - 49 pts (Standard 24-block coo
 TIER_GOLD = "GOLD_VERIFIED_OEM"             # 50 - 99 pts (Fast-Track 12-block cooling-off)
 TIER_PLATINUM = "PLATINUM_GUARANTOR"        # >= 100 pts (Fast-Track 12-block cooling-off)
 
+# Block Time & Cooling-Off Parameters
+# GenLayer StudioNet average block time is ~3 seconds per block
+SECONDS_PER_BLOCK = 3
 STANDARD_COOLING_OFF_BLOCKS = 24
 FAST_TRACK_COOLING_OFF_BLOCKS = 12
+
+STANDARD_COOLING_OFF_SECONDS = STANDARD_COOLING_OFF_BLOCKS * SECONDS_PER_BLOCK     # 72 seconds
+FAST_TRACK_COOLING_OFF_SECONDS = FAST_TRACK_COOLING_OFF_BLOCKS * SECONDS_PER_BLOCK # 36 seconds
+DEFAULT_WARRANTY_DURATION_SECONDS = 6000 * SECONDS_PER_BLOCK                       # 18000 seconds
 
 
 def _addr_str(addr: Address) -> str:
@@ -111,8 +128,29 @@ class Contract(gl.Contract):
         if _addr_str(self.owner) == ZERO_ADDRESS:
             self.owner = _get_sender()
 
+    def _get_current_timestamp(self) -> u256:
+        """
+        Retrieves current transaction/block timestamp in UNIX epoch seconds.
+        In GenLayer, consensus passes the block datetime in gl.message_raw['datetime'].
+        """
+        try:
+            dt_str = gl.message_raw.get("datetime", "") if hasattr(gl, "message_raw") and gl.message_raw else ""
+            if dt_str:
+                clean = dt_str.replace("Z", "+00:00")
+                return u256(int(datetime.fromisoformat(clean).timestamp()))
+        except Exception:
+            pass
+        try:
+            return u256(int(datetime.now().timestamp()))
+        except Exception:
+            return u256(0)
+
     def _get_current_block(self) -> u256:
-        return u256(int(self.vault_counter))
+        """Translates current timestamp to equivalent GenLayer block height."""
+        ts = self._get_current_timestamp()
+        if SECONDS_PER_BLOCK > 0:
+            return ts // u256(SECONDS_PER_BLOCK)
+        return ts
 
     # -- Reputation Management Internal Helpers -------------------------
 
@@ -184,12 +222,12 @@ class Contract(gl.Contract):
         self._touch_participant(sender_str)
         self._touch_participant(consumer_str)
 
-        dur = u256(warranty_blocks if warranty_blocks > 0 else 6000)
+        dur_seconds = u256(warranty_blocks * SECONDS_PER_BLOCK if warranty_blocks > 0 else DEFAULT_WARRANTY_DURATION_SECONDS)
 
         self.vault_counter = self.vault_counter + u64(1)
         vault_id = self.vault_counter
-        current_block = self._get_current_block()
-        expires_at = current_block + dur
+        current_time = self._get_current_timestamp()
+        expires_at = current_time + dur_seconds
         empty_addr = Address(ZERO_ADDRESS)
 
         is_fast = self._is_fast_track_eligible(sender_str)
@@ -210,7 +248,7 @@ class Contract(gl.Contract):
             reason="Warranty vault active. Device covered under autonomous Lemon Law protection.",
             confidence=u8(0),
             severity_score=u8(0),
-            created_at_block=current_block,
+            created_at_block=current_time,
             expires_at_block=expires_at,
             audit_completed_block=u256(0),
             is_fast_track=is_fast,
@@ -291,15 +329,14 @@ class Contract(gl.Contract):
         if _addr_str(sender) != _addr_str(v.consumer):
             raise gl.UserError("Role Violation: Only the registered device consumer can file a claim.")
 
-        current_block = self._get_current_block()
-        if current_block > v.expires_at_block:
+        current_time = self._get_current_timestamp()
+        if current_time > v.expires_at_block:
             raise gl.UserError("Warranty coverage duration has expired.")
 
         clean_url = str(diagnostic_log_url).strip()
         if not clean_url.startswith("http://") and not clean_url.startswith("https://"):
             raise gl.UserError("Valid public diagnostic log telemetry URL required.")
 
-        self.vault_counter = self.vault_counter + u64(1)
         v.diagnostic_log_url = clean_url
         v.status = STATUS_CLAIM_FILED
         v.reason = "Lemon Law defect claim registered. Ready for AI diagnostic adjudication."
@@ -445,10 +482,9 @@ Respond ONLY with valid JSON without markdown fences:
         if "evidence_hash" in adjudication_res and adjudication_res["evidence_hash"]:
             v.evidence_hash = str(adjudication_res["evidence_hash"])
 
-        self.vault_counter = self.vault_counter + u64(1)
-        current_block = self._get_current_block()
+        current_time = self._get_current_timestamp()
         v.status = STATUS_AWAITING_PAYOUT
-        v.audit_completed_block = current_block
+        v.audit_completed_block = current_time
 
     @gl.public.write.payable
     def appeal_verdict(self, vault_id: u64, dispute_reason: str) -> None:
@@ -464,12 +500,11 @@ Respond ONLY with valid JSON without markdown fences:
         if _addr_str(sender) != _addr_str(v.consumer) and _addr_str(sender) != _addr_str(v.manufacturer):
             raise gl.UserError("Role Violation: Only consumer or manufacturer can file an appeal.")
 
-        self.vault_counter = self.vault_counter + u64(1)
-        current_block = self._get_current_block()
-
+        current_time = self._get_current_timestamp()
+        window_seconds = FAST_TRACK_COOLING_OFF_SECONDS if v.is_fast_track else STANDARD_COOLING_OFF_SECONDS
         window_blocks = FAST_TRACK_COOLING_OFF_BLOCKS if v.is_fast_track else STANDARD_COOLING_OFF_BLOCKS
-        if current_block > (v.audit_completed_block + u256(window_blocks)):
-            raise gl.UserError(f"Dispute cooling-off window ({window_blocks} blocks) has expired.")
+        if current_time > (v.audit_completed_block + u256(window_seconds)):
+            raise gl.UserError(f"Dispute cooling-off window ({window_blocks} blocks / {window_seconds}s) has expired.")
 
         required_bond = (v.escrow_amount * bigint(10)) // bigint(100)
         if required_bond == bigint(0):
@@ -635,12 +670,11 @@ Respond ONLY with valid JSON:
         ):
             raise gl.UserError("Permission Denied: Only vault stakeholders can finalize settlement.")
 
-        self.vault_counter = self.vault_counter + u64(1)
-        current_block = self._get_current_block()
-
+        current_time = self._get_current_timestamp()
+        window_seconds = FAST_TRACK_COOLING_OFF_SECONDS if v.is_fast_track else STANDARD_COOLING_OFF_SECONDS
         window_blocks = FAST_TRACK_COOLING_OFF_BLOCKS if v.is_fast_track else STANDARD_COOLING_OFF_BLOCKS
-        if current_block <= (v.audit_completed_block + u256(window_blocks)):
-            raise gl.UserError(f"Cooling-off challenge window ({window_blocks} blocks) is still active.")
+        if current_time <= (v.audit_completed_block + u256(window_seconds)):
+            raise gl.UserError(f"Cooling-off challenge window ({window_blocks} blocks / {window_seconds}s) is still active.")
 
         escrow_val = v.escrow_amount
         v.escrow_amount = bigint(0)  # Lock escrow against double payout
@@ -705,13 +739,12 @@ Respond ONLY with valid JSON:
         if _addr_str(_get_sender()) != _addr_str(v.manufacturer):
             raise gl.UserError("Role Violation: Only the manufacturer can reclaim expired warranty funds.")
 
-        self.vault_counter = self.vault_counter + u64(1)
-        current_block = self._get_current_block()
+        current_time = self._get_current_timestamp()
 
         if v.status != STATUS_WARRANTY_ACTIVE:
             raise gl.UserError("Cannot reclaim: Vault has active claims, under review, or already settled.")
 
-        if current_block < v.expires_at_block:
+        if current_time < v.expires_at_block:
             raise gl.UserError("Cannot reclaim: Warranty coverage duration is still active.")
 
         v.status = STATUS_EXPIRED_RECLAIMED
@@ -754,6 +787,9 @@ Respond ONLY with valid JSON:
             "created_at_block": str(v.created_at_block),
             "expires_at_block": str(v.expires_at_block),
             "audit_completed_block": str(v.audit_completed_block),
+            "created_at_time": str(v.created_at_block),
+            "expires_at_time": str(v.expires_at_block),
+            "audit_completed_time": str(v.audit_completed_block),
             "is_fast_track": bool(v.is_fast_track),
             "co_guarantor_count": int(v.co_guarantor_count),
         }
@@ -788,6 +824,9 @@ Respond ONLY with valid JSON:
                     "created_at_block": str(v.created_at_block),
                     "expires_at_block": str(v.expires_at_block),
                     "audit_completed_block": str(v.audit_completed_block),
+                    "created_at_time": str(v.created_at_block),
+                    "expires_at_time": str(v.expires_at_block),
+                    "audit_completed_time": str(v.audit_completed_block),
                     "is_fast_track": bool(v.is_fast_track),
                     "co_guarantor_count": int(v.co_guarantor_count),
                 })
