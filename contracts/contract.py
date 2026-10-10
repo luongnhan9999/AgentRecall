@@ -1,25 +1,14 @@
 # { "Depends": "py-genlayer:1jb45aa8ynh2a9c9xn3b7qqh8sm5q93hwfp7jqmwsfhh8jpz09h6" }
 from genlayer import *
 from dataclasses import dataclass
-from datetime import datetime
 import json
-import hashlib
 
-try:
-    UserError = gl.vm.UserError
-except Exception:
-    class UserError(Exception):
-        pass
+class UserError(Exception):
+    pass
 
 class ContractError(UserError):
     """Domain-specific error for AgentRecall protocol."""
     pass
-
-if not hasattr(gl, "UserError"):
-    try:
-        gl.UserError = UserError
-    except Exception:
-        pass
 
 CANARY_TOKEN = "CANARY_AGENT_RECALL_LEMON_V1"
 ZERO_ADDRESS = "0x0000000000000000000000000000000000000000"
@@ -67,7 +56,7 @@ def _get_sender() -> Address:
         try:
             return gl.message.sender
         except Exception:
-            raise gl.UserError("Cannot resolve sender address.")
+            raise UserError("Cannot resolve sender address.")
 
 
 def _pay_native(recipient: Address, amount: bigint) -> None:
@@ -141,6 +130,7 @@ class Contract(gl.Contract):
         In GenLayer, consensus passes the block datetime in gl.message_raw['datetime'].
         """
         try:
+            from datetime import datetime
             dt_str = gl.message_raw.get("datetime", "") if hasattr(gl, "message_raw") and gl.message_raw else ""
             if dt_str:
                 clean = dt_str.replace("Z", "+00:00")
@@ -153,6 +143,7 @@ class Contract(gl.Contract):
         except Exception:
             pass
         try:
+            from datetime import datetime
             return u256(int(datetime.now().timestamp()))
         except Exception:
             return u256(1759000000)
@@ -214,22 +205,22 @@ class Contract(gl.Contract):
         self._ensure_owner()
         escrow = bigint(gl.message.value)
         if escrow <= bigint(0):
-            raise gl.UserError("Warranty guarantee escrow must be greater than 0 GEN.")
+            raise UserError("Warranty guarantee escrow must be greater than 0 GEN.")
 
         clean_device = str(device_serial_or_vin).strip()
         if len(clean_device) < 6:
-            raise gl.UserError("Valid device serial or vehicle VIN (>= 6 chars) is required.")
+            raise UserError("Valid device serial or vehicle VIN (>= 6 chars) is required.")
 
         clean_fw = str(firmware_version).strip()
         if not clean_fw:
-            raise gl.UserError("Valid firmware version identifier is required.")
+            raise UserError("Valid firmware version identifier is required.")
 
         sender = _get_sender()
         sender_str = _addr_str(sender)
         consumer_str = _addr_str(consumer_address)
 
         if sender_str == consumer_str:
-            raise gl.UserError("Manufacturer cannot assign warranty escrow to their own address.")
+            raise UserError("Manufacturer cannot assign warranty escrow to their own address.")
 
         self._touch_participant(sender_str)
         self._touch_participant(consumer_str)
@@ -284,17 +275,17 @@ class Contract(gl.Contract):
     def pledge_warranty_escrow(self, vault_id: u64) -> None:
         self._ensure_owner()
         if vault_id not in self.vaults:
-            raise gl.UserError(f"Warranty vault {int(vault_id)} does not exist.")
+            raise UserError(f"Warranty vault {int(vault_id)} does not exist.")
 
         v = self.vaults[vault_id]
         if v.status != STATUS_WARRANTY_ACTIVE:
-            raise gl.UserError("Can only contribute warranty escrow to active vaults.")
+            raise UserError("Can only contribute warranty escrow to active vaults.")
 
         funder = _get_sender()
         funder_str = _addr_str(funder)
         pledge_val = bigint(gl.message.value)
         if pledge_val <= bigint(0):
-            raise gl.UserError("Co-guarantor contribution must be greater than 0 GEN.")
+            raise UserError("Co-guarantor contribution must be greater than 0 GEN.")
 
         self._touch_participant(funder_str)
 
@@ -331,23 +322,23 @@ class Contract(gl.Contract):
     ) -> None:
         self._ensure_owner()
         if vault_id not in self.vaults:
-            raise gl.UserError(f"Warranty vault {int(vault_id)} does not exist.")
+            raise UserError(f"Warranty vault {int(vault_id)} does not exist.")
 
         v = self.vaults[vault_id]
         if v.status != STATUS_WARRANTY_ACTIVE:
-            raise gl.UserError("Vault is not in active warranty coverage status.")
+            raise UserError("Vault is not in active warranty coverage status.")
 
         sender = _get_sender()
         if _addr_str(sender) != _addr_str(v.consumer):
-            raise gl.UserError("Role Violation: Only the registered device consumer can file a claim.")
+            raise UserError("Role Violation: Only the registered device consumer can file a claim.")
 
         current_time = self._get_current_timestamp()
         if current_time > v.expires_at_block:
-            raise gl.UserError("Warranty coverage duration has expired.")
+            raise UserError("Warranty coverage duration has expired.")
 
         clean_url = str(diagnostic_log_url).strip()
         if not clean_url.startswith("http://") and not clean_url.startswith("https://"):
-            raise gl.UserError("Valid public diagnostic log telemetry URL required.")
+            raise UserError("Valid public diagnostic log telemetry URL required.")
 
         v.diagnostic_log_url = clean_url
         v.status = STATUS_CLAIM_FILED
@@ -357,11 +348,11 @@ class Contract(gl.Contract):
     def adjudicate_lemon_claim(self, vault_id: u64) -> None:
         self._ensure_owner()
         if vault_id not in self.vaults:
-            raise gl.UserError(f"Warranty vault {int(vault_id)} does not exist.")
+            raise UserError(f"Warranty vault {int(vault_id)} does not exist.")
 
         v = self.vaults[vault_id]
         if v.status != STATUS_CLAIM_FILED:
-            raise gl.UserError("Vault is not awaiting claim adjudication.")
+            raise UserError("Vault is not awaiting claim adjudication.")
 
         sender = _get_sender()
         sender_str = _addr_str(sender)
@@ -370,7 +361,7 @@ class Contract(gl.Contract):
             and sender_str != _addr_str(v.manufacturer)
             and sender_str != _addr_str(self.owner)
         ):
-            raise gl.UserError("Permission Denied: Only consumer, manufacturer, or owner can trigger adjudication.")
+            raise UserError("Permission Denied: Only consumer, manufacturer, or owner can trigger adjudication.")
 
         diag_url = v.diagnostic_log_url
         vin_serial = v.device_vin_or_serial
@@ -394,7 +385,11 @@ class Contract(gl.Contract):
                     "evidence_hash": "0000000000000000000000000000000000000000000000000000000000000000",
                 }
 
-            evidence_hash = hashlib.sha256(raw_diag.encode("utf-8")).hexdigest()
+            try:
+                import hashlib
+                evidence_hash = hashlib.sha256(raw_diag.encode("utf-8")).hexdigest()
+            except Exception:
+                evidence_hash = "0" * 64
 
             prompt = f"""You are the Chief Automotive Safety & Firmware Diagnostic Arbiter on GenLayer.
 Evaluate this hardware defect claim against Lemon Law and consumer protection warranty guidelines.
@@ -479,11 +474,7 @@ Respond ONLY with valid JSON without markdown fences:
                 return False
 
             mine = leader_fn()
-            if mine["verdict"] != leader["verdict"]:
-                return False
-            if leader.get("evidence_hash") != mine.get("evidence_hash"):
-                return False
-            return True
+            return mine["verdict"] == leader["verdict"]
 
         adjudication_res = gl.vm.run_nondet(leader_fn, validator_fn)
 
@@ -502,21 +493,21 @@ Respond ONLY with valid JSON without markdown fences:
     def appeal_verdict(self, vault_id: u64, dispute_reason: str) -> None:
         self._ensure_owner()
         if vault_id not in self.vaults:
-            raise gl.UserError(f"Warranty vault {int(vault_id)} does not exist.")
+            raise UserError(f"Warranty vault {int(vault_id)} does not exist.")
 
         v = self.vaults[vault_id]
         if v.status != STATUS_AWAITING_PAYOUT:
-            raise gl.UserError("Can only appeal vaults in AWAITING_PAYOUT status.")
+            raise UserError("Can only appeal vaults in AWAITING_PAYOUT status.")
 
         sender = _get_sender()
         if _addr_str(sender) != _addr_str(v.consumer) and _addr_str(sender) != _addr_str(v.manufacturer):
-            raise gl.UserError("Role Violation: Only consumer or manufacturer can file an appeal.")
+            raise UserError("Role Violation: Only consumer or manufacturer can file an appeal.")
 
         current_time = self._get_current_timestamp()
         window_seconds = FAST_TRACK_COOLING_OFF_SECONDS if v.is_fast_track else STANDARD_COOLING_OFF_SECONDS
         window_blocks = FAST_TRACK_COOLING_OFF_BLOCKS if v.is_fast_track else STANDARD_COOLING_OFF_BLOCKS
         if current_time > (v.audit_completed_block + u256(window_seconds)):
-            raise gl.UserError(f"Dispute cooling-off window ({window_blocks} blocks / {window_seconds}s) has expired.")
+            raise UserError(f"Dispute cooling-off window ({window_blocks} blocks / {window_seconds}s) has expired.")
 
         required_bond = (v.escrow_amount * bigint(10)) // bigint(100)
         if required_bond == bigint(0):
@@ -524,11 +515,11 @@ Respond ONLY with valid JSON without markdown fences:
 
         staked = bigint(gl.message.value)
         if staked < required_bond:
-            raise gl.UserError(f"Must stake at least 10% dispute bond ({int(required_bond)} wei).")
+            raise UserError(f"Must stake at least 10% dispute bond ({int(required_bond)} wei).")
 
         clean_reason = str(dispute_reason).strip()
         if len(clean_reason) < 10:
-            raise gl.UserError("Detailed dispute justification (>= 10 chars) required.")
+            raise UserError("Detailed dispute justification (>= 10 chars) required.")
 
         v.status = STATUS_DISPUTED
         v.dispute_initiator = sender
@@ -540,15 +531,15 @@ Respond ONLY with valid JSON without markdown fences:
     def adjudicate_appeal(self, vault_id: u64, supplemental_log_url: str) -> None:
         self._ensure_owner()
         if vault_id not in self.vaults:
-            raise gl.UserError(f"Warranty vault {int(vault_id)} does not exist.")
+            raise UserError(f"Warranty vault {int(vault_id)} does not exist.")
 
         v = self.vaults[vault_id]
         if v.status != STATUS_DISPUTED:
-            raise gl.UserError("Vault is not in DISPUTED status.")
+            raise UserError("Vault is not in DISPUTED status.")
 
         clean_url = str(supplemental_log_url).strip()
         if not clean_url.startswith("http://") and not clean_url.startswith("https://"):
-            raise gl.UserError("Valid supplemental laboratory telemetry URL required.")
+            raise UserError("Valid supplemental laboratory telemetry URL required.")
 
         appellant = v.dispute_initiator
         appellant_str = _addr_str(appellant)
@@ -651,7 +642,7 @@ Respond ONLY with valid JSON:
             v.reason = f"[APPEAL PARTIAL] {app_reason}"
             _pay_native(v.consumer, payout)
             self._refund_guarantors_proportional(vault_id, returned, escrow_val)
-            _pay_native(counterparty, bond_val)
+            _pay_native(appellant, bond_val)
             self._add_reputation(mfg_str, 5)
 
         else:
@@ -667,11 +658,11 @@ Respond ONLY with valid JSON:
     def finalize_settlement(self, vault_id: u64) -> None:
         self._ensure_owner()
         if vault_id not in self.vaults:
-            raise gl.UserError(f"Warranty vault {int(vault_id)} does not exist.")
+            raise UserError(f"Warranty vault {int(vault_id)} does not exist.")
 
         v = self.vaults[vault_id]
         if v.status != STATUS_AWAITING_PAYOUT:
-            raise gl.UserError("Vault is not awaiting settlement payout.")
+            raise UserError("Vault is not awaiting settlement payout.")
 
         sender = _get_sender()
         sender_str = _addr_str(sender)
@@ -680,13 +671,13 @@ Respond ONLY with valid JSON:
             and sender_str != _addr_str(v.manufacturer)
             and sender_str != _addr_str(self.owner)
         ):
-            raise gl.UserError("Permission Denied: Only vault stakeholders can finalize settlement.")
+            raise UserError("Permission Denied: Only vault stakeholders can finalize settlement.")
 
         current_time = self._get_current_timestamp()
         window_seconds = FAST_TRACK_COOLING_OFF_SECONDS if v.is_fast_track else STANDARD_COOLING_OFF_SECONDS
         window_blocks = FAST_TRACK_COOLING_OFF_BLOCKS if v.is_fast_track else STANDARD_COOLING_OFF_BLOCKS
         if current_time <= (v.audit_completed_block + u256(window_seconds)):
-            raise gl.UserError(f"Cooling-off challenge window ({window_blocks} blocks / {window_seconds}s) is still active.")
+            raise UserError(f"Cooling-off challenge window ({window_blocks} blocks / {window_seconds}s) is still active.")
 
         escrow_val = v.escrow_amount
         v.escrow_amount = bigint(0)  # Lock escrow against double payout
@@ -745,19 +736,19 @@ Respond ONLY with valid JSON:
     def cancel_or_reclaim(self, vault_id: u64) -> None:
         self._ensure_owner()
         if vault_id not in self.vaults:
-            raise gl.UserError(f"Warranty vault {int(vault_id)} does not exist.")
+            raise UserError(f"Warranty vault {int(vault_id)} does not exist.")
 
         v = self.vaults[vault_id]
         if _addr_str(_get_sender()) != _addr_str(v.manufacturer):
-            raise gl.UserError("Role Violation: Only the manufacturer can reclaim expired warranty funds.")
+            raise UserError("Role Violation: Only the manufacturer can reclaim expired warranty funds.")
 
         current_time = self._get_current_timestamp()
 
         if v.status != STATUS_WARRANTY_ACTIVE:
-            raise gl.UserError("Cannot reclaim: Vault has active claims, under review, or already settled.")
+            raise UserError("Cannot reclaim: Vault has active claims, under review, or already settled.")
 
         if current_time < v.expires_at_block:
-            raise gl.UserError("Cannot reclaim: Warranty coverage duration is still active.")
+            raise UserError("Cannot reclaim: Warranty coverage duration is still active.")
 
         v.status = STATUS_EXPIRED_RECLAIMED
         v.verdict = "EXPIRED_CLEAN"
@@ -777,7 +768,7 @@ Respond ONLY with valid JSON:
     @gl.public.view
     def get_vault(self, vault_id: u64) -> str:
         if vault_id not in self.vaults:
-            raise gl.UserError(f"Warranty vault {int(vault_id)} does not exist.")
+            raise UserError(f"Warranty vault {int(vault_id)} does not exist.")
 
         v = self.vaults[vault_id]
         data = {
