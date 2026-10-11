@@ -115,14 +115,13 @@ class Contract(gl.Contract):
     syndicate_pledges_json: TreeMap[u64, str]
 
     def __init__(self):
-        self.owner = Address(ZERO_ADDRESS)
+        self.owner = _get_sender()
         self.total_warranty_locked = bigint(0)
         self.total_claims_settled = u32(0)
         self.vault_counter = u64(0)
 
     def _ensure_owner(self) -> None:
-        if _addr_str(self.owner) == ZERO_ADDRESS:
-            self.owner = _get_sender()
+        pass
 
     def _get_current_timestamp(self) -> u256:
         """
@@ -231,7 +230,7 @@ class Contract(gl.Contract):
         vault_id = self.vault_counter
         current_time = self._get_current_timestamp()
         expires_at = current_time + dur_seconds
-        empty_addr = Address(ZERO_ADDRESS)
+        empty_addr = sender
 
         is_fast = self._is_fast_track_eligible(sender_str)
 
@@ -506,7 +505,8 @@ Respond ONLY with valid JSON without markdown fences:
         current_time = self._get_current_timestamp()
         window_seconds = FAST_TRACK_COOLING_OFF_SECONDS if v.is_fast_track else STANDARD_COOLING_OFF_SECONDS
         window_blocks = FAST_TRACK_COOLING_OFF_BLOCKS if v.is_fast_track else STANDARD_COOLING_OFF_BLOCKS
-        if current_time > (v.audit_completed_block + u256(window_seconds)):
+        # Strictly enforces expiry at or after the 12/24-block deadline
+        if current_time >= (v.audit_completed_block + u256(window_seconds)):
             raise UserError(f"Dispute cooling-off window ({window_blocks} blocks / {window_seconds}s) has expired.")
 
         required_bond = (v.escrow_amount * bigint(10)) // bigint(100)
@@ -676,7 +676,7 @@ Respond ONLY with valid JSON:
         current_time = self._get_current_timestamp()
         window_seconds = FAST_TRACK_COOLING_OFF_SECONDS if v.is_fast_track else STANDARD_COOLING_OFF_SECONDS
         window_blocks = FAST_TRACK_COOLING_OFF_BLOCKS if v.is_fast_track else STANDARD_COOLING_OFF_BLOCKS
-        if current_time <= (v.audit_completed_block + u256(window_seconds)):
+        if current_time < (v.audit_completed_block + u256(window_seconds)):
             raise UserError(f"Cooling-off challenge window ({window_blocks} blocks / {window_seconds}s) is still active.")
 
         escrow_val = v.escrow_amount

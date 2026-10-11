@@ -58,9 +58,9 @@ Tranh chấp bảo hành xe điện (EV) và thiết bị IoT phần cứng (*Le
 
 ---
 
-## 🧪 4. Kiểm Thử Tự Động (`tests/test_agentrecall.py`)
+## 🧪 4. Kiểm Thử Tự Động (`tests/`)
 
-Tất cả 7 bài test được kiểm thử tự động và vượt qua **100%**:
+Tất cả 18 bài test được kiểm thử tự động và vượt qua **18/18 tests PASSED (100%)**:
 - `test_contract_syntax_and_structure`: Kiểm tra cú pháp GenVM.
 - `test_vault_struct_attributes`: Kiểm tra trường dữ liệu storage.
 - `test_agentrecall_critical_flaw_full_refund`: Lỗi phanh khẩn cấp & BMS kích hoạt hoàn tiền 100%.
@@ -68,15 +68,21 @@ Tất cả 7 bài test được kiểm thử tự động và vượt qua **100%
 - `test_agentrecall_appeal_dismissed_bond_slashed`: Kháng cáo thất bại bị phạt tịch thu bond.
 - `test_agentrecall_v3_syndicate_coguarantor_pooling`: Nhà cung cấp pin đồng ký quỹ bảo chứng.
 - `test_agentrecall_v3_reputation_tiers_and_leaderboard`: Chấm điểm uy tín OEM và thăng hạng.
-- `test_contract_runtime_24_block_appeal_verdict_deadline_and_unrelated_vault_immunity`: **[Steward Feedback Fix]** Chứng minh `appeal_verdict` hoạt động bình thường trong cửa sổ 24 blocks (72s) bất chấp hoạt động spam trên các vault khác, và BẮT BUỘC REVERT khi đạt hoặc vượt quá deadline 24-block (>= 72s) theo chain time.
-- `test_contract_runtime_12_block_fast_track_appeal_verdict_deadline_coverage`: **[Steward Feedback Fix]** Chứng minh `appeal_verdict` của OEM Fast-Track (Gold/Platinum) đóng đúng hạn 12 blocks (36s) và BẮT BUỘC REVERT tại hoặc sau 36s.
-- `test_cooling_window_cannot_be_accelerated_by_unrelated_vaults`: Chứng minh không thể giải ngân sớm bằng cách spam vault rác.
+- `test_contract_runtime_24_block_cooling_and_appeal_windows_mature_with_chain_time`: Kiểm tra cửa sổ làm mát và bảo hành trưởng thành theo thời gian chuỗi.
+- `test_contract_runtime_12_block_fast_track_cooling_window`: Kiểm tra cửa sổ rút gọn 12 block cho OEM uy tín.
+- `test_contract_runtime_warranty_expiry_matures_with_chain_time`: Kiểm tra hết hạn bảo hành theo thời gian thực.
+- `test_contract_runtime_24_block_appeal_verdict_deadline_and_unrelated_vault_immunity`: **[Steward Requirement]** Gọi `appeal_verdict` trong cửa sổ 24 blocks (72s) hoạt động bình thường bất chấp burst spam, và BẮT BUỘC REVERT khi đạt hoặc vượt quá deadline 24-block (>= 72s).
+- `test_contract_runtime_12_block_fast_track_appeal_verdict_deadline_coverage`: **[Steward Requirement]** Gọi `appeal_verdict` của OEM Fast-Track (Gold/Platinum) đóng đúng hạn 12 blocks (36s) và BẮT BUỘC REVERT tại hoặc sau 36s.
+- `test_cooling_window_cannot_be_accelerated_by_unrelated_vault_activity`: Chứng minh không thể giải ngân sớm bằng cách spam vault rác.
 - `test_appeal_verdict_allowed_within_window_despite_unrelated_vaults`: Chứng minh quyền kháng cáo không bị tước đoạt sớm bởi hành vi spam của bên thứ ba.
+- `test_appeal_window_reverts_at_or_after_standard_24_block_deadline_with_unrelated_activity`: **[Steward Requirement]** Thực thi kiểm thử runtime gọi `appeal_verdict` tại và sau mốc 24-block (72s) với spam vault rác xen giữa, chứng minh bị chặn tuyệt đối.
+- `test_appeal_window_reverts_at_or_after_fast_track_12_block_deadline`: **[Steward Requirement]** Thực thi kiểm thử runtime gọi `appeal_verdict` tại và sau mốc 12-block (36s) với hoạt động vault khác, chứng minh bị chặn tuyệt đối.
+- `test_cooling_window_cannot_be_accelerated_by_unrelated_vaults`: Kiểm tra tính toàn vẹn của thời gian chain.
 
 Chạy kiểm thử:
 ```bash
 pytest -v
-# Kết quả: 16/16 tests PASSED (100%)
+# Kết quả: 18 passed in 2.57s (100% SUCCESS)
 ```
 
 ---
