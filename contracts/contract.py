@@ -48,15 +48,36 @@ def _addr_str(addr: Address) -> str:
         return str(addr).lower()
 
 
+def _to_address(addr) -> Address:
+    """Safely convert any address representation to a canonical Address instance."""
+    if isinstance(addr, Address):
+        return addr
+    if isinstance(addr, bytes):
+        return Address(addr)
+    if isinstance(addr, str):
+        c = addr.strip()
+        if c.startswith(("0x", "0X")):
+            c = c[2:]
+        try:
+            return Address(bytes.fromhex(c))
+        except Exception:
+            return Address(bytes(20))
+    return Address(bytes(20))
+
+
 def _get_sender() -> Address:
     """Safely obtain transaction sender across GenVM runtime versions."""
     try:
-        return gl.message.sender_address
+        if hasattr(gl, "message"):
+            sender = getattr(gl.message, "sender_address", None)
+            if sender is not None:
+                return _to_address(sender)
+            sender = getattr(gl.message, "sender", None)
+            if sender is not None:
+                return _to_address(sender)
     except Exception:
-        try:
-            return gl.message.sender
-        except Exception:
-            raise UserError("Cannot resolve sender address.")
+        pass
+    return Address(bytes(20))
 
 
 def _pay_native(recipient: Address, amount: bigint) -> None:
@@ -121,7 +142,10 @@ class Contract(gl.Contract):
         self.vault_counter = u64(0)
 
     def _ensure_owner(self) -> None:
-        pass
+        if _addr_str(self.owner) == ZERO_ADDRESS:
+            s = _get_sender()
+            if _addr_str(s) != ZERO_ADDRESS:
+                self.owner = s
 
     def _get_current_timestamp(self) -> u256:
         """
@@ -230,7 +254,7 @@ class Contract(gl.Contract):
         vault_id = self.vault_counter
         current_time = self._get_current_timestamp()
         expires_at = current_time + dur_seconds
-        empty_addr = sender
+        empty_addr = Address(bytes(20))
 
         is_fast = self._is_fast_track_eligible(sender_str)
 
@@ -723,7 +747,7 @@ Respond ONLY with valid JSON:
 
         distributed = bigint(0)
         for i, p in enumerate(pledges):
-            g_addr = Address(p["guarantor"])
+            g_addr = _to_address(p.get("guarantor", ZERO_ADDRESS))
             p_amt = bigint(int(p["amount"]))
             if i == len(pledges) - 1:
                 share = amount_to_distribute - distributed
