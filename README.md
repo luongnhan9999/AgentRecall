@@ -68,15 +68,15 @@ Tất cả 7 bài test được kiểm thử tự động và vượt qua **100%
 - `test_agentrecall_appeal_dismissed_bond_slashed`: Kháng cáo thất bại bị phạt tịch thu bond.
 - `test_agentrecall_v3_syndicate_coguarantor_pooling`: Nhà cung cấp pin đồng ký quỹ bảo chứng.
 - `test_agentrecall_v3_reputation_tiers_and_leaderboard`: Chấm điểm uy tín OEM và thăng hạng.
-- `test_contract_runtime_24_block_cooling_and_appeal_windows_mature_with_chain_time`: **[Steward Feedback Fix]** Chứng minh cửa sổ cooling-off 24 blocks (72s) trưởng thành theo chain time thực tế và HOÀN TOÀN không bị đẩy nhanh bởi giao dịch trên các vault khác.
-- `test_contract_runtime_12_block_fast_track_cooling_window_matures_with_chain_time`: **[Steward Feedback Fix]** Chứng minh cửa sổ Fast-Track 12 blocks (36s) cho OEM Gold/Platinum trưởng thành độc lập, miễn nhiễm với hoạt động vault khác.
-- `test_contract_runtime_warranty_expiry_matures_with_chain_time_not_unrelated_vaults`: **[Steward Feedback Fix]** Chứng minh thời hạn bảo hành trưởng thành theo thời gian chain, ngăn chặn việc thu hồi tiền ký quỹ sớm bằng cách spam transaction.
-- `test_contract_runtime_claim_cannot_be_filed_after_warranty_expired_by_time`: **[Steward Feedback Fix]** Chứng minh không thể nộp đơn đòi bồi thường sau khi thời hạn bảo hành đã hết hạn theo chain time.
+- `test_contract_runtime_24_block_appeal_verdict_deadline_and_unrelated_vault_immunity`: **[Steward Feedback Fix]** Chứng minh `appeal_verdict` hoạt động bình thường trong cửa sổ 24 blocks (72s) bất chấp hoạt động spam trên các vault khác, và BẮT BUỘC REVERT khi đạt hoặc vượt quá deadline 24-block (>= 72s) theo chain time.
+- `test_contract_runtime_12_block_fast_track_appeal_verdict_deadline_coverage`: **[Steward Feedback Fix]** Chứng minh `appeal_verdict` của OEM Fast-Track (Gold/Platinum) đóng đúng hạn 12 blocks (36s) và BẮT BUỘC REVERT tại hoặc sau 36s.
+- `test_cooling_window_cannot_be_accelerated_by_unrelated_vaults`: Chứng minh không thể giải ngân sớm bằng cách spam vault rác.
+- `test_appeal_verdict_allowed_within_window_despite_unrelated_vaults`: Chứng minh quyền kháng cáo không bị tước đoạt sớm bởi hành vi spam của bên thứ ba.
 
 Chạy kiểm thử:
 ```bash
 pytest -v
-# Kết quả: 11/11 tests PASSED (100%)
+# Kết quả: 16/16 tests PASSED (100%)
 ```
 
 ---

@@ -530,3 +530,180 @@ def test_contract_runtime_claim_cannot_be_filed_after_warranty_expired_by_time()
         except Exception as e:
             assert "Warranty coverage duration has expired." in str(e)
 
+
+def test_contract_runtime_24_block_appeal_verdict_deadline_and_unrelated_vault_immunity():
+    """
+    STEWARD REQUIRED RUNTIME COVERAGE:
+    Explicitly exercises `appeal_verdict` at and after the 24-block (72s) deadline,
+    demonstrating that:
+    1. `appeal_verdict` succeeds within the 24-block cooling window.
+    2. Intense unrelated vault activity CANNOT prematurely expire the appeal window.
+    3. `appeal_verdict` REVERTS at/after the 24-block deadline (>= 72s) due to elapsed chain time,
+       even after unrelated vault activity.
+    """
+    vm = VMContext()
+    with vm.activate():
+        oem, consumer = create_test_addresses(2)
+        vm.startPrank(oem)
+        contract = deploy_contract("contracts/contract.py", vm)
+        from genlayer.py.types import Address
+
+        # 1. OEM registers standard vault (is_fast_track = False) with 1 GEN escrow
+        vm._value = 10**18
+        vm._refresh_gl_message()
+        vid = contract.register_warranty_vault(Address(consumer), "VIN-EV-APPEAL-STANDARD-24", "v1.0.0", 6000)
+
+        # 2. Consumer files claim and enters AWAITING_PAYOUT
+        vm.startPrank(consumer)
+        contract.file_lemon_claim(vid, "https://telemetry.org/appeal_test_log.json")
+        vm.mock_web(".*", {"status": 200, "body": "DTC:U0100 MINOR_GLITCH"})
+        vm.mock_llm(".*", json.dumps({
+            "canary": "CANARY_AGENT_RECALL_LEMON_V1",
+            "verdict": "CLAIM_REJECTED",
+            "confidence": 85,
+            "severity_score": 15,
+            "reason": "Minor infotainment telemetry hiccup."
+        }))
+        contract.adjudicate_lemon_claim(vid)
+
+        # 3. Burst of 30 unrelated transactions across other vaults
+        vm.startPrank(oem)
+        for i in range(30):
+            c_bytes = bytes.fromhex(f"{i+300:040x}")
+            vm._value = 10**16
+            vm._refresh_gl_message()
+            contract.register_warranty_vault(Address(c_bytes), f"VIN-UNRELATED-BURST-{i}", "v1.0.0", 100)
+
+        # 4. Appeal within active window (< 72s) MUST SUCCEED despite 30 unrelated transactions!
+        vm.startPrank(consumer)
+        vm._value = 10**17  # 10% dispute bond
+        vm._refresh_gl_message()
+        contract.appeal_verdict(vid, "Valid appeal: certified mechanic proves radar sensor dead.")
+        v_appealed = json.loads(contract.get_vault(vid))
+        assert v_appealed["status"] == 6  # STATUS_DISPUTED
+        assert v_appealed["dispute_bond"] == str(10**17)
+
+        # 5. Create Vault 2 to exercise appeal_verdict AT AND AFTER 24-block deadline
+        vm.startPrank(oem)
+        vm._value = 10**18
+        vm._refresh_gl_message()
+        vid2 = contract.register_warranty_vault(Address(consumer), "VIN-EV-EXPIRED-APPEAL-24", "v1.0.0", 6000)
+        vm.startPrank(consumer)
+        contract.file_lemon_claim(vid2, "https://telemetry.org/appeal_test_log2.json")
+        contract.adjudicate_lemon_claim(vid2)
+
+        # 6. Simulate more unrelated vault activity (20 transactions)
+        vm.startPrank(oem)
+        for i in range(20):
+            c_bytes = bytes.fromhex(f"{i+400:040x}")
+            vm._value = 10**16
+            vm._refresh_gl_message()
+            contract.register_warranty_vault(Address(c_bytes), f"VIN-UNRELATED-POST-{i}", "v1.0.0", 100)
+
+        # 7. Warp chain time past 24 blocks (24 * 3s = 72s -> warp +75s past audit)
+        cur = datetime.fromisoformat(vm._datetime.replace("Z", "+00:00"))
+        vm.warp((cur + timedelta(seconds=75)).isoformat())
+
+        # 8. Exercising appeal_verdict at/after the 24-block deadline MUST REVERT!
+        vm.startPrank(consumer)
+        vm._value = 10**17
+        vm._refresh_gl_message()
+        appeal_reverted = False
+        try:
+            contract.appeal_verdict(vid2, "Late appeal filed after the 24-block deadline.")
+        except Exception as e:
+            appeal_reverted = "Dispute cooling-off window (24 blocks / 72s) has expired." in str(e)
+        assert appeal_reverted, "appeal_verdict MUST REVERT at or after 24-block deadline (72s)"
+
+
+def test_contract_runtime_12_block_fast_track_appeal_verdict_deadline_coverage():
+    """
+    STEWARD REQUIRED RUNTIME COVERAGE:
+    Explicitly exercises `appeal_verdict` at and after the 12-block (36s) fast-track deadline,
+    demonstrating that:
+    1. Gold/Platinum OEM vaults qualify for 12-block fast-track.
+    2. `appeal_verdict` succeeds within the 12-block cooling window despite unrelated vault activity.
+    3. `appeal_verdict` REVERTS at/after the 12-block deadline (>= 36s) due to elapsed chain time.
+    """
+    vm = VMContext()
+    with vm.activate():
+        oem, consumer = create_test_addresses(2)
+        vm.startPrank(oem)
+        contract = deploy_contract("contracts/contract.py", vm)
+        from genlayer.py.types import Address
+
+        # OEM establishes Gold Verified reputation (+40 pts -> 50 pts total)
+        for i in range(2):
+            c_bytes = bytes.fromhex(f"{i+650:040x}")
+            vm._value = 10**18
+            vm._refresh_gl_message()
+            vid_clean = contract.register_warranty_vault(Address(c_bytes), f"VIN-CLEAN-FT-{i}", "v1.0.0", 10)
+            cur = datetime.fromisoformat(vm._datetime.replace("Z", "+00:00"))
+            vm.warp((cur + timedelta(seconds=35)).isoformat())
+            contract.cancel_or_reclaim(vid_clean)
+
+        prof = json.loads(contract.get_reputation_profile(Address(oem)))
+        assert prof["is_fast_track_eligible"] is True
+        assert prof["tier"] == "GOLD_VERIFIED_OEM"
+
+        # 1. Register fast-track vault
+        vm._value = 10**18
+        vm._refresh_gl_message()
+        vid = contract.register_warranty_vault(Address(consumer), "VIN-EV-FT-APPEAL-12", "v1.0.0", 6000)
+        v_data = json.loads(contract.get_vault(vid))
+        assert v_data["is_fast_track"] is True
+
+        # 2. File claim and adjudicate
+        vm.startPrank(consumer)
+        contract.file_lemon_claim(vid, "https://telemetry.org/ft_log.json")
+        vm.mock_web(".*", {"status": 200, "body": "DTC:C1100"})
+        vm.mock_llm(".*", json.dumps({
+            "canary": "CANARY_AGENT_RECALL_LEMON_V1",
+            "verdict": "PARTIAL_REPAIR_COMPENSATION",
+            "confidence": 88,
+            "severity_score": 50,
+            "reason": "Moderate sensor failure."
+        }))
+        contract.adjudicate_lemon_claim(vid)
+
+        # 3. Unrelated vault activity (15 transactions)
+        vm.startPrank(oem)
+        for i in range(15):
+            c_bytes = bytes.fromhex(f"{i+750:040x}")
+            vm._value = 10**16
+            vm._refresh_gl_message()
+            contract.register_warranty_vault(Address(c_bytes), f"VIN-UNRELATED-FT-{i}", "v1.0.0", 100)
+
+        # 4. Appeal within active 12-block window (< 36s) SUCCEEDS despite 15 unrelated transactions
+        vm.startPrank(consumer)
+        vm._value = 10**17
+        vm._refresh_gl_message()
+        contract.appeal_verdict(vid, "Dispute partial verdict: total battery pack replacement needed.")
+        v_appealed = json.loads(contract.get_vault(vid))
+        assert v_appealed["status"] == 6  # STATUS_DISPUTED
+
+        # 5. Create second fast-track vault to test expiration
+        vm.startPrank(oem)
+        vm._value = 10**18
+        vm._refresh_gl_message()
+        vid2 = contract.register_warranty_vault(Address(consumer), "VIN-EV-FT-EXPIRED-APPEAL-12", "v1.0.0", 6000)
+        vm.startPrank(consumer)
+        contract.file_lemon_claim(vid2, "https://telemetry.org/ft_log2.json")
+        contract.adjudicate_lemon_claim(vid2)
+
+        # 6. Warp chain time past 12 blocks (12 * 3s = 36s -> warp +40s past audit)
+        cur = datetime.fromisoformat(vm._datetime.replace("Z", "+00:00"))
+        vm.warp((cur + timedelta(seconds=40)).isoformat())
+
+        # 7. Exercising appeal_verdict at/after 12-block fast-track deadline MUST REVERT!
+        vm.startPrank(consumer)
+        vm._value = 10**17
+        vm._refresh_gl_message()
+        appeal_reverted = False
+        try:
+            contract.appeal_verdict(vid2, "Late appeal filed after 12-block fast-track window.")
+        except Exception as e:
+            appeal_reverted = "Dispute cooling-off window (12 blocks / 36s) has expired." in str(e)
+        assert appeal_reverted, "appeal_verdict MUST REVERT at or after 12-block deadline (36s)"
+
+
