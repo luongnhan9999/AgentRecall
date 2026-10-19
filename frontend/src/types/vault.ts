@@ -19,6 +19,17 @@ export interface WarrantyVault {
   audit_completed_block: string;
   is_fast_track: boolean;
   co_guarantor_count: number;
+  fleet_circuit_breaker_active?: boolean;
+  firmware_fault_count?: number;
+}
+
+export interface FirmwareSafetyReport {
+  firmware_version: string;
+  critical_fault_count: number;
+  circuit_breaker_active: boolean;
+  recall_timestamp: string;
+  safety_status: string;
+  threshold: number;
 }
 
 export interface SyndicatePledge {

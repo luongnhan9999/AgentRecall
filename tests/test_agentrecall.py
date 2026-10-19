@@ -707,3 +707,101 @@ def test_contract_runtime_12_block_fast_track_appeal_verdict_deadline_coverage()
         assert appeal_reverted, "appeal_verdict MUST REVERT at or after 12-block deadline (36s)"
 
 
+# =====================================================================
+# Milestone v3.2: Autonomous Protocols & Multi-Perspective AI Tests
+# =====================================================================
+
+def test_autonomous_protocols_fleet_circuit_breaker_tripped_on_critical_flaws():
+    """
+    Milestone v3.2 / Track 4.6 Autonomous Protocols:
+    Demonstrates that the Intelligent Contract autonomously detects when critical flaws
+    on a specific firmware release cross the safety threshold (>= 3 critical defects),
+    automatically activating the Fleet Safety Circuit Breaker without human voting.
+    """
+    vm = VMContext()
+    with vm.activate():
+        oem, consumer = create_test_addresses(2)
+        vm.startPrank(oem)
+        contract = deploy_contract("contracts/contract.py", vm)
+        from genlayer.py.types import Address
+
+        fw_target = "v2026.4.12-BETA-AUTONOMOUS"
+
+        # Check baseline: Circuit breaker is inactive
+        assert contract.is_fleet_circuit_breaker_active(fw_target) is False
+        report_init = json.loads(contract.get_firmware_safety_report(fw_target))
+        assert report_init["critical_fault_count"] == 0
+        assert report_init["circuit_breaker_active"] is False
+        assert report_init["safety_status"] == "FLEET_HEALTHY_MONITORED"
+
+        # Simulate 3 consecutive critical BMS thermal runaway defects on the same firmware
+        vm.mock_web(".*", {"status": 200, "body": "DTC:U0129 STATUS:CRITICAL BMS_CELL_DELTA:2.1V THERMAL_RUNAWAY:TRUE"})
+        vm.mock_llm(".*", json.dumps({
+            "canary": "CANARY_AGENT_RECALL_LEMON_V1",
+            "verdict": "LEMON_FULL_REFUND",
+            "confidence": 99,
+            "severity_score": 95,
+            "reason": "Unrecoverable BMS thermal runaway hazard verified."
+        }))
+
+        for i in range(3):
+            vm.startPrank(oem)
+            vm._value = 10**18
+            vm._refresh_gl_message()
+            vid = contract.register_warranty_vault(Address(consumer), f"VIN-TESLA-CYBER-{i}", fw_target, 6000)
+
+            vm.startPrank(consumer)
+            contract.file_lemon_claim(vid, f"https://telemetry-safe.org/bms_fault_{i}.json")
+            contract.adjudicate_lemon_claim(vid)
+
+        # Verify that the 3rd critical flaw autonomously tripped the Fleet Circuit Breaker!
+        assert contract.is_fleet_circuit_breaker_active(fw_target) is True
+        report_tripped = json.loads(contract.get_firmware_safety_report(fw_target))
+        assert report_tripped["critical_fault_count"] == 3
+        assert report_tripped["circuit_breaker_active"] is True
+        assert report_tripped["safety_status"] == "CRITICAL_FLEET_RECALL_ACTIVE"
+
+        # Verify vault payload reflects circuit breaker activation
+        v_latest = json.loads(contract.get_vault(vid))
+        assert "[FLEET CIRCUIT BREAKER TRIPPED]" in v_latest["reason"]
+        assert v_latest["fleet_circuit_breaker_active"] is True
+        assert v_latest["firmware_fault_count"] == 3
+
+
+def test_multi_perspective_ai_adjudication_verdict_integrity():
+    """
+    Milestone v3.2 / Category 1 AI Enhancement:
+    Verifies that multi-perspective forensic prompting evaluates DTC codes,
+    preserves the security canary token, and returns valid verdict and severity.
+    """
+    vm = VMContext()
+    with vm.activate():
+        oem, consumer = create_test_addresses(2)
+        vm.startPrank(oem)
+        contract = deploy_contract("contracts/contract.py", vm)
+        from genlayer.py.types import Address
+
+        vm._value = 10**18
+        vm._refresh_gl_message()
+        vid = contract.register_warranty_vault(Address(consumer), "VIN-EV-LUCID-AIR-77", "v3.0.0", 6000)
+
+        vm.startPrank(consumer)
+        contract.file_lemon_claim(vid, "https://telemetry-lab.org/lucid_sensor_telemetry.json")
+
+        vm.mock_web(".*", {"status": 200, "body": "DTC:C1100 WHEEL_SPEED_SENSOR_INTERMITTENT VOLTAGE:11.8V"})
+        vm.mock_llm(".*", json.dumps({
+            "canary": "CANARY_AGENT_RECALL_LEMON_V1",
+            "verdict": "PARTIAL_REPAIR_COMPENSATION",
+            "confidence": 92,
+            "severity_score": 50,
+            "reason": "Moderate wheel speed sensor harness fault identified across forensic perspectives."
+        }))
+
+        contract.adjudicate_lemon_claim(vid)
+        v = json.loads(contract.get_vault(vid))
+        assert v["verdict"] == "PARTIAL_REPAIR_COMPENSATION"
+        assert v["severity_score"] == 50
+        assert v["confidence"] == 92
+        assert "sensor harness fault" in v["reason"].lower()
+
+

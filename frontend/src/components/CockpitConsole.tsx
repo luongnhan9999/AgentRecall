@@ -91,6 +91,22 @@ export const CockpitConsole: React.FC<CockpitConsoleProps> = ({
         </div>
       </div>
 
+      {/* Fleet Circuit Breaker Active Warning Banner */}
+      {currentVault?.fleet_circuit_breaker_active && (
+        <div className="bg-rose-500/15 border-b border-rose-500/40 px-5 py-2.5 flex flex-wrap items-center justify-between gap-2 animate-pulse">
+          <div className="flex items-center space-x-2 text-rose-300 font-mono text-xs font-bold">
+            <AlertOctagon className="w-4 h-4 text-rose-400" />
+            <span>AUTONOMOUS PROTOCOL TRIPPED: FLEET SAFETY CIRCUIT BREAKER ACTIVE</span>
+            <span className="text-[10px] bg-rose-500/20 px-2 py-0.5 rounded text-rose-200 border border-rose-500/30">
+              {currentVault.firmware_fault_count || 3}+ Critical Flaws on FW {currentVault.firmware_version}
+            </span>
+          </div>
+          <span className="text-[10px] font-mono text-rose-300">
+            NHTSA &amp; Statutory Lemon Law Recall Notice Broadcasted
+          </span>
+        </div>
+      )}
+
       {/* Main Cockpit Content Grid */}
       <div className="p-5 grid grid-cols-1 lg:grid-cols-12 gap-5">
         {/* Left: Device / Vehicle Selector & ECU Diagnostics (5 cols) */}

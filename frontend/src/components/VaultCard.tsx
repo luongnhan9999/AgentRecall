@@ -57,6 +57,12 @@ export const VaultCard: React.FC<VaultCardProps> = ({
                 <span>{vault.co_guarantor_count} BACKERS</span>
               </span>
             )}
+            {vault.fleet_circuit_breaker_active && (
+              <span className="flex items-center space-x-1 px-2 py-0.5 rounded-md text-[10px] font-mono bg-red-500/20 text-red-400 border border-red-500/40 animate-pulse">
+                <AlertCircle className="w-3 h-3" />
+                <span>FLEET RECALL</span>
+              </span>
+            )}
           </div>
           <span className={`inline-flex items-center space-x-1.5 px-2.5 py-1 rounded-full text-[11px] font-mono font-medium border ${statusInfo.color}`}>
             <span className={`h-1.5 w-1.5 rounded-full ${statusInfo.dot} animate-pulse`}></span>

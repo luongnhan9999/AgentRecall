@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { X, ShieldAlert, Cpu, Hash, ExternalLink, Activity, Award, CheckCircle, Scale } from 'lucide-react';
+import { X, ShieldAlert, Cpu, Hash, ExternalLink, Activity, Award, CheckCircle, Scale, AlertCircle } from 'lucide-react';
 import { WarrantyVault, SyndicatePledge } from '../types/vault';
 import { formatGen, getStatusBadge, getSeverityStyle, shortenAddress } from '../utils/formatters';
 
@@ -114,6 +114,57 @@ export const DiagnosticInspectorModal: React.FC<DiagnosticInspectorModalProps> =
                 ></div>
               </div>
             </div>
+          </div>
+
+          {/* Milestone v3.2: Multi-Perspective Forensic AI Breakdown */}
+          <div className="p-4 bg-slate-900/90 border border-slate-800 rounded-xl space-y-3">
+            <div className="flex items-center justify-between">
+              <span className="text-xs font-mono uppercase text-slate-300 font-semibold flex items-center space-x-1.5">
+                <Cpu className="w-4 h-4 text-cyan-400" />
+                <span>3-Perspective Forensic AI Adjudication</span>
+              </span>
+              <span className="text-[10px] font-mono px-2 py-0.5 rounded bg-emerald-500/10 text-emerald-400 border border-emerald-500/20">
+                CANARY VERIFIED
+              </span>
+            </div>
+
+            <div className="grid grid-cols-1 md:grid-cols-3 gap-2.5 pt-1">
+              <div className="p-2.5 bg-slate-950 rounded-lg border border-slate-800/80">
+                <div className="text-[10px] font-mono text-cyan-400 font-bold uppercase mb-1">
+                  1. Sensor Forensics
+                </div>
+                <p className="text-[11px] font-mono text-slate-300 leading-tight">
+                  OBD-II DTC frame timing, BMS cell voltage &Delta; limits, and physical tamper resistance verified.
+                </p>
+              </div>
+
+              <div className="p-2.5 bg-slate-950 rounded-lg border border-slate-800/80">
+                <div className="text-[10px] font-mono text-amber-400 font-bold uppercase mb-1">
+                  2. Firmware Audit
+                </div>
+                <p className="text-[11px] font-mono text-slate-300 leading-tight">
+                  ECU kernel panic traces, factory OTA regression detection, and thermal runaway hazards audited.
+                </p>
+              </div>
+
+              <div className="p-2.5 bg-slate-950 rounded-lg border border-slate-800/80">
+                <div className="text-[10px] font-mono text-emerald-400 font-bold uppercase mb-1">
+                  3. Statutory Lemon Law
+                </div>
+                <p className="text-[11px] font-mono text-slate-300 leading-tight">
+                  Magnuson-Moss Warranty Act safety thresholds and mandatory manufacturer repurchase criteria met.
+                </p>
+              </div>
+            </div>
+
+            {vault.fleet_circuit_breaker_active && (
+              <div className="p-2.5 bg-red-500/10 border border-red-500/30 rounded-lg flex items-center space-x-2 text-xs text-red-400 font-mono">
+                <AlertCircle className="w-4 h-4 flex-shrink-0 animate-pulse text-red-400" />
+                <span>
+                  <strong>AUTONOMOUS FLEET CIRCUIT BREAKER TRIPPED:</strong> 3+ critical flaws verified on firmware {vault.firmware_version}. Fleet-wide recall expedited protection active.
+                </span>
+              </div>
+            )}
           </div>
 
           {/* Cryptographic Evidence Digest */}

@@ -105,6 +105,13 @@ export const FileClaimModal: React.FC<FileClaimModalProps> = ({
               >
                 ⚠️ Moderate Infotainment / ECU Lag (Severity 55)
               </button>
+              <button
+                type="button"
+                onClick={() => setLogUrl('https://telemetry-archive.org/ev_logs/vin7731f_thermal_runaway.json')}
+                className="text-left px-2.5 py-1.5 bg-rose-950/30 border border-rose-500/30 rounded-lg text-xs font-mono text-rose-300 hover:text-rose-100 hover:border-rose-400 transition"
+              >
+                🛑 Fleet Safety Hazard: Pack Thermal Runaway (Triggers Circuit Breaker)
+              </button>
             </div>
           </div>
 
