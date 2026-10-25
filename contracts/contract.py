@@ -671,10 +671,15 @@ Respond ONLY with valid JSON:
         self.total_claims_settled = self.total_claims_settled + u32(1)
 
         counterparty = v.manufacturer if appellant_str == con_str else v.consumer
+        prior_verdict = str(v.verdict)
+        fw_ver = str(v.firmware_version)
+        current_time = self._get_current_timestamp()
 
+        final_verdict = ""
         if app_verdict == "APPEAL_UPHELD_FULL_REFUND":
             v.status = STATUS_SETTLED_FULL_REFUND
             v.verdict = "LEMON_FULL_REFUND"
+            final_verdict = "LEMON_FULL_REFUND"
             v.reason = f"[APPEAL UPHELD] {app_reason}"
             _pay_native(v.consumer, escrow_val)
             _pay_native(appellant, bond_val)
@@ -685,6 +690,7 @@ Respond ONLY with valid JSON:
         elif app_verdict == "APPEAL_UPHELD_PARTIAL":
             v.status = STATUS_SETTLED_PARTIAL
             v.verdict = "PARTIAL_REPAIR_COMPENSATION"
+            final_verdict = "PARTIAL_REPAIR_COMPENSATION"
             payout = (escrow_val * bigint(40)) // bigint(100)
             returned = escrow_val - payout
             v.reason = f"[APPEAL PARTIAL] {app_reason}"
@@ -696,11 +702,35 @@ Respond ONLY with valid JSON:
         else:
             v.status = STATUS_SETTLED_REJECTED
             v.verdict = "CLAIM_REJECTED"
+            final_verdict = "CLAIM_REJECTED"
             v.reason = f"[APPEAL DISMISSED] {app_reason}"
             self._refund_guarantors_proportional(vault_id, escrow_val, escrow_val)
             _pay_native(counterparty, bond_val)
             self._add_reputation(appellant_str, -5)
             self.stats_appeals_lost[appellant_str] = self.stats_appeals_lost.get(appellant_str, u32(0)) + u32(1)
+
+        # Autonomous Protocols & Fleet Safety Circuit Breaker:
+        # Synchronize firmware fault count and recall status to reflect final adjudicated appellate outcomes:
+        # 1. Defects overturned on appeal (provisional full-refund reversed to partial repair or rejection)
+        if prior_verdict == "LEMON_FULL_REFUND" and final_verdict != "LEMON_FULL_REFUND":
+            cur_faults = self.firmware_critical_faults.get(fw_ver, u32(0))
+            if cur_faults > u32(0):
+                new_faults = cur_faults - u32(1)
+                self.firmware_critical_faults[fw_ver] = new_faults
+                # Deactivate recall circuit breaker if confirmed defects fall below safety threshold
+                if int(new_faults) < FLEET_CIRCUIT_BREAKER_THRESHOLD:
+                    self.fleet_circuit_breaker_active[fw_ver] = False
+                    self.fleet_recall_timestamps[fw_ver] = u256(0)
+
+        # 2. Critical defect established ONLY on appeal (initially rejected/partial, now confirmed as LEMON_FULL_REFUND)
+        elif prior_verdict != "LEMON_FULL_REFUND" and final_verdict == "LEMON_FULL_REFUND":
+            cur_faults = self.firmware_critical_faults.get(fw_ver, u32(0)) + u32(1)
+            self.firmware_critical_faults[fw_ver] = cur_faults
+            # Trip recall circuit breaker if safety threshold reached/exceeded
+            if int(cur_faults) >= FLEET_CIRCUIT_BREAKER_THRESHOLD:
+                self.fleet_circuit_breaker_active[fw_ver] = True
+                if self.fleet_recall_timestamps.get(fw_ver, u256(0)) == u256(0):
+                    self.fleet_recall_timestamps[fw_ver] = current_time
 
     @gl.public.write
     def finalize_settlement(self, vault_id: u64) -> None:

@@ -804,4 +804,200 @@ def test_multi_perspective_ai_adjudication_verdict_integrity():
         assert v["confidence"] == 92
         assert "sensor harness fault" in v["reason"].lower()
 
+# =====================================================================
+# Steward Joaquin Regression Coverage: Appellate Outcome Synchronization
+# =====================================================================
+
+def test_regression_three_provisional_full_refund_verdicts_later_reversed_deactivates_circuit_breaker():
+    """
+    Steward Joaquin Requirement:
+    "Add regression coverage for three provisional full-refund verdicts later reversed"
+    
+    Demonstrates:
+    1. Three provisional full-refund verdicts on firmware FW_TRIP trip the circuit breaker (count = 3, recall = True).
+    2. The OEM appeals all three vaults within the cooling-off window.
+    3. As appeals are adjudicated and provisional full-refund defects are reversed (overturned):
+       - Vault 1 reversed -> fault count decrements to 2 -> circuit breaker deactivates to False!
+       - Vault 2 reversed -> fault count decrements to 1 -> circuit breaker remains False.
+       - Vault 3 reversed -> fault count decrements to 0 -> circuit breaker remains False.
+    4. Firmware safety report reflects clean state.
+    """
+    vm = VMContext()
+    with vm.activate():
+        oem, consumer = create_test_addresses(2)
+        vm.startPrank(oem)
+        contract = deploy_contract("contracts/contract.py", vm)
+        from genlayer.py.types import Address
+
+        fw_target = "v2026.4.12-PROV-REVERSED"
+
+        # Step 1: Create 3 vaults for the same firmware release build
+        vault_ids = []
+        for i in range(3):
+            vm.startPrank(oem)
+            vm._value = 10**18
+            vm._refresh_gl_message()
+            vid = contract.register_warranty_vault(Address(consumer), f"VIN-TESLA-FLEET-REV-{i}", fw_target, 6000)
+            vault_ids.append(vid)
+
+        # Step 2: Consumer files claims and initial adjudication yields provisional LEMON_FULL_REFUND
+        vm._llm_mocks.clear()
+        vm._web_mocks.clear()
+        vm.mock_web(".*", {"status": 200, "body": "DTC:U0129 STATUS:CRITICAL BMS_DELTA:2.2V"})
+        vm.mock_llm(".*", json.dumps({
+            "canary": "CANARY_AGENT_RECALL_LEMON_V1",
+            "verdict": "LEMON_FULL_REFUND",
+            "confidence": 98,
+            "severity_score": 90,
+            "reason": "Provisional critical fault confirmed."
+        }))
+
+        for i, vid in enumerate(vault_ids):
+            vm.startPrank(consumer)
+            contract.file_lemon_claim(vid, f"https://telemetry-archive.org/claim_{i}.json")
+            contract.adjudicate_lemon_claim(vid)
+
+        # Verify circuit breaker is tripped after 3 provisional critical faults
+        assert contract.is_fleet_circuit_breaker_active(fw_target) is True
+        report_tripped = json.loads(contract.get_firmware_safety_report(fw_target))
+        assert report_tripped["critical_fault_count"] == 3
+        assert report_tripped["circuit_breaker_active"] is True
+        assert report_tripped["safety_status"] == "CRITICAL_FLEET_RECALL_ACTIVE"
+
+        # Step 3: OEM appeals Vault 0 with 10% dispute bond within cooling-off window
+        vm.startPrank(oem)
+        vm._value = 10**17
+        vm._refresh_gl_message()
+        contract.appeal_verdict(vault_ids[0], "OEM appeal: Telemetry was contaminated by aftermarket charger.")
+
+        # Appellate Court overturns Vault 0 (dismisses lemon claim)
+        vm._llm_mocks.clear()
+        vm._web_mocks.clear()
+        vm.mock_web(".*", {"status": 200, "body": "INDEPENDENT_LAB_AUDIT: NO_FACTORY_DEFECT AFTERMARKET_TAMPERING:TRUE"})
+        vm.mock_llm(".*", json.dumps({
+            "canary": "CANARY_AGENT_RECALL_LEMON_V1",
+            "verdict": "APPEAL_DISMISSED",
+            "reason": "Supplemental audit establishes aftermarket modification. Defect overturned."
+        }))
+        contract.adjudicate_appeal(vault_ids[0], "https://independent-lab.org/supp_audit_0.json")
+
+        # Crucial check: Reversing Vault 0 dropped faults to 2 < 3 -> Circuit breaker DEACTIVATED!
+        assert contract.is_fleet_circuit_breaker_active(fw_target) is False
+        report_after_first_reversal = json.loads(contract.get_firmware_safety_report(fw_target))
+        assert report_after_first_reversal["critical_fault_count"] == 2
+        assert report_after_first_reversal["circuit_breaker_active"] is False
+        assert report_after_first_reversal["safety_status"] == "FLEET_HEALTHY_MONITORED"
+
+        # Step 4: Reverse Vault 1 as well (overturned to partial repair)
+        vm.startPrank(oem)
+        vm._value = 10**17
+        vm._refresh_gl_message()
+        contract.appeal_verdict(vault_ids[1], "OEM appeal: Flaw is only a harness connection issue, not cell defect.")
+
+        vm._llm_mocks.clear()
+        vm._web_mocks.clear()
+        vm.mock_web(".*", {"status": 200, "body": "INDEPENDENT_LAB_AUDIT: HARNESS_REPAIRABLE"})
+        vm.mock_llm(".*", json.dumps({
+            "canary": "CANARY_AGENT_RECALL_LEMON_V1",
+            "verdict": "APPEAL_UPHELD_PARTIAL",
+            "reason": "Supplemental audit confirms repairable harness defect, not systemic lemon flaw."
+        }))
+        contract.adjudicate_appeal(vault_ids[1], "https://independent-lab.org/supp_audit_1.json")
+
+        report_after_second_reversal = json.loads(contract.get_firmware_safety_report(fw_target))
+        assert report_after_second_reversal["critical_fault_count"] == 1
+        assert report_after_second_reversal["circuit_breaker_active"] is False
+
+        # Step 5: Reverse Vault 2 as well
+        vm.startPrank(oem)
+        vm._value = 10**17
+        vm._refresh_gl_message()
+        contract.appeal_verdict(vault_ids[2], "OEM appeal: Bench test passed 100% normal.")
+
+        vm._llm_mocks.clear()
+        vm._web_mocks.clear()
+        vm.mock_web(".*", {"status": 200, "body": "BENCH_TEST: NORMAL"})
+        vm.mock_llm(".*", json.dumps({
+            "canary": "CANARY_AGENT_RECALL_LEMON_V1",
+            "verdict": "APPEAL_DISMISSED",
+            "reason": "Normal operation confirmed on bench test. Claim rejected."
+        }))
+        contract.adjudicate_appeal(vault_ids[2], "https://independent-lab.org/supp_audit_2.json")
+
+        report_after_third_reversal = json.loads(contract.get_firmware_safety_report(fw_target))
+        assert report_after_third_reversal["critical_fault_count"] == 0
+        assert report_after_third_reversal["circuit_breaker_active"] is False
+
+
+def test_regression_critical_defect_established_only_on_appeal():
+    """
+    Steward Joaquin Requirement:
+    "Add regression coverage for a critical defect established only on appeal."
+
+    Demonstrates:
+    1. Initial adjudication mistakenly rejects a claim (or only rules partial repair) -> fault count is 0.
+    2. Consumer appeals with supplemental independent lab telemetry proving a critical unrecoverable defect.
+    3. Appellate court rules APPEAL_UPHELD_FULL_REFUND -> defect is established only on appeal.
+    4. Firmware critical fault count properly increments from 0 to 1, accurately reflecting final outcome!
+    """
+    vm = VMContext()
+    with vm.activate():
+        oem, consumer = create_test_addresses(2)
+        vm.startPrank(oem)
+        contract = deploy_contract("contracts/contract.py", vm)
+        from genlayer.py.types import Address
+
+        fw_target = "v2026.4.12-ESTABLISHED-ON-APPEAL"
+
+        vm._value = 10**18
+        vm._refresh_gl_message()
+        vid = contract.register_warranty_vault(Address(consumer), "VIN-EV-RIVIAN-APPEAL-1", fw_target, 6000)
+
+        # Initial adjudication: AI Court rules CLAIM_REJECTED (e.g. intermittent noise, insufficient initial proof)
+        vm.startPrank(consumer)
+        contract.file_lemon_claim(vid, "https://telemetry.org/initial_log_ambiguous.json")
+
+        vm._llm_mocks.clear()
+        vm._web_mocks.clear()
+        vm.mock_web(".*", {"status": 200, "body": "DTC:INFO_ONLY SENSOR_VARIANCE:LOW"})
+        vm.mock_llm(".*", json.dumps({
+            "canary": "CANARY_AGENT_RECALL_LEMON_V1",
+            "verdict": "CLAIM_REJECTED",
+            "confidence": 75,
+            "severity_score": 20,
+            "reason": "Initial proof shows minor variance, claim rejected."
+        }))
+        contract.adjudicate_lemon_claim(vid)
+
+        # Verify initial state: 0 critical faults, circuit breaker inactive
+        assert contract.is_fleet_circuit_breaker_active(fw_target) is False
+        report_init = json.loads(contract.get_firmware_safety_report(fw_target))
+        assert report_init["critical_fault_count"] == 0
+        assert report_init["circuit_breaker_active"] is False
+
+        # Consumer appeals with comprehensive independent dynamometer lab proof
+        vm.startPrank(consumer)
+        vm._value = 10**17  # 10% dispute bond
+        vm._refresh_gl_message()
+        contract.appeal_verdict(vid, "Appellate dispute: Independent dynamometer test confirms fatal drive-unit stator short.")
+
+        # Supreme Appellate Court establishes critical factory defect
+        vm._llm_mocks.clear()
+        vm._web_mocks.clear()
+        vm.mock_web(".*", {"status": 200, "body": "INDEPENDENT_DYNAMOMETER_REPORT: STATOR_INSULATION_BREAKDOWN HAZARD:CRITICAL_UNINTENDED_DECELERATION"})
+        vm.mock_llm(".*", json.dumps({
+            "canary": "CANARY_AGENT_RECALL_LEMON_V1",
+            "verdict": "APPEAL_UPHELD_FULL_REFUND",
+            "reason": "Supplemental dyno audit establishes unrecoverable drive-unit manufacturing flaw. Lemon full refund upheld."
+        }))
+        contract.adjudicate_appeal(vid, "https://dynamometer-lab.org/rivian_stator_audit.json")
+
+        # Verify final outcome: Critical defect established only on appeal is counted!
+        v_final = json.loads(contract.get_vault(vid))
+        assert v_final["status"] == 3  # STATUS_SETTLED_FULL_REFUND
+        assert v_final["verdict"] == "LEMON_FULL_REFUND"
+
+        report_final = json.loads(contract.get_firmware_safety_report(fw_target))
+        assert report_final["critical_fault_count"] == 1
+        assert report_final["circuit_breaker_active"] is False
 

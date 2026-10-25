@@ -2,6 +2,17 @@
 
 All notable changes to the AgentRecall protocol will be documented in this file.
 
+## [v3.2.1] - 2026-10-25
+### Added & Fixed (Steward Joaquin Review Remediation)
+- **Appellate Outcome Synchronization for Fleet Safety Circuit Breakers (`contracts/contract.py`)**:
+  - Fully synchronized `firmware_critical_faults` and `fleet_circuit_breaker_active` to reflect final appellate outcomes in `adjudicate_appeal`.
+  - **Defects Overturned on Appeal**: When provisional full-refund verdicts are reversed on appeal (e.g. to partial repair or rejection), confirmed critical fault counts decrement. When count falls below threshold (< 3), the recall circuit breaker automatically deactivates to `False` and resets recall timestamps.
+  - **Defects Established Only on Appeal**: When a critical flaw is proven via supplemental laboratory logs on appeal after an initial rejection, fault counts properly increment and trip the circuit breaker if the safety threshold is reached.
+- **Steward Joaquin Regression Coverage (`tests/test_agentrecall.py`)**:
+  - `test_regression_three_provisional_full_refund_verdicts_later_reversed_deactivates_circuit_breaker`: Exercises 3 provisional full-refund verdicts tripping the breaker, followed by 3 reversals deactivating it back to healthy.
+  - `test_regression_critical_defect_established_only_on_appeal`: Exercises a claim initially rejected, then proven on appeal, properly incrementing firmware fault count.
+  - Test suite expanded with 100% pass rate.
+
 ## [v3.2.0] - 2026-10-19
 ### Added
 - **Autonomous Fleet Safety Recall Circuit Breaker (Track 4.6: Autonomous Protocols)**:
